@@ -1,0 +1,8 @@
+**/**/__pycache__/
+build/
+dist/*
+**/*.lock
+**.(pn|jp)g
+**/plots/
+**/*.csv
+# **/*/publish.sh
