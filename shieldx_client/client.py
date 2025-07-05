@@ -1,23 +1,17 @@
 import httpx
-from datetime import datetime, timezone
-from typing import Optional, Dict
-from pydantic import TypeAdapter
 import json
 import time as T
-from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
+from typing import Optional, Dict, Any,TypeVar,Type,List
 from shieldx_client.log.logger_config import get_logger
 from shieldx_client.models.event_type import EventTypeId, EventTypeModel
 from shieldx_client.models.event import EventModel
-from shieldx_client.models.trigger import TriggerId
 from shieldx_client.models.rule import RuleId, RuleModel
-from shieldx_client.models.relations import (
-    EventsTriggersModel,
-    TriggersTriggersModel,
-    RulesTriggerModel,
-)
+from option import Result,Ok,Err
 
 
-L =  get_logger("shieldx-client")
+L =  get_logger(name="shieldx-client")
+R = TypeVar(name="R", bound=BaseModel)
 
 
 class ShieldXClient:
@@ -117,18 +111,20 @@ class ShieldXClient:
 
     # --- EventType CRUD completo ---
 
-    async def create_event_type(self, event_type: str, headers: Dict[str, str] = {}) -> EventTypeId:
+    async def create_event_type(self, event_type: str, headers: Dict[str, str] = {}) -> Result[EventTypeId,Exception]:
         """Crea un nuevo tipo de evento."""
-        payload = {"event_type": event_type}
-        result = await self._post("/event-types", payload, headers)
-        if isinstance(result, str):
-            return EventTypeId(event_type_id=result)
-        return EventTypeId(event_type_id=result.get("event_type_id", ""))
+        try:
+            payload = {"event_type": event_type}
+            result = await self._post(path="/event-types", payload=payload,model=EventTypeId, headers=headers)
+            return result
+        except Exception as e:
+            return Err(e)
 
-    async def list_event_types(self, headers: Dict[str, str] = {}) -> list[EventTypeModel]:
+    async def list_event_types(self, headers: Dict[str, str] = {}) -> Result[List[EventTypeModel],Exception]:
         """Lista todos los tipos de evento."""
-        data = await self._get("/event-types", headers)
-        return [EventTypeModel(**et) for et in data]
+        data = await self._get(path = "/event-types", model=EventTypeModel,headers=headers,is_list=True)
+        return data
+        # return [EventTypeModel(**et) for et in data]
 
     async def get_event_type_by_id(self, event_type_id: str, headers: Dict[str, str] = {}) -> EventTypeModel:
         """Obtiene un tipo de evento específico por su ID."""
@@ -267,32 +263,35 @@ class ShieldXClient:
     #            return {}
     #        return response.json()
         
-    async def _post(self, path: str, payload: Dict[str, Any], headers: Dict[str, str] = {}):
+    async def _post(self, path: str, payload: Dict[str, Any],model:Type[R], headers: Dict[str, str] = {})->Result[R, Exception]:
         """
         Método interno para enviar solicitudes POST.
         Combina cabeceras, mide el tiempo y maneja errores.
         Devuelve JSON si hay contenido, o {} en caso de 204.
         """
-        url = f"{self.base_url}{path}"
-        full_headers = {**self.headers, **headers}
-        t1 = T.time()
+        try:
+            url = f"{self.base_url}{path}"
+            full_headers = {**self.headers, **headers}
+            t1 = T.time()
 
-        
+            
 
-        async with httpx.AsyncClient(headers=full_headers) as client:
-            response = await client.post(url, json=payload)
+            async with httpx.AsyncClient(headers=full_headers) as client:
+                response = await client.post(url, json=payload)
 
-        
-        L.info({"event": "CLIENT.POST.RESPONSE", 
-                "path": path, 
-                "status": response.status_code, 
-                "time": T.time() - t1
-                })
+            
+            L.info({"event": "CLIENT.POST.RESPONSE", 
+                    "path": path, 
+                    "status": response.status_code, 
+                    "time": T.time() - t1
+                    })
 
-        response.raise_for_status()
-        if response.status_code == 204 or not response.content:
-            return {}
-        return response.json()
+            response.raise_for_status()
+            # if response.status_code == 204 or not response.content:
+                # return Ok({})
+            return Ok(model.model_validate(response.json()))
+        except Exception as e:
+            return Err(e)
 
 
     #async def _get(self, path: str, headers: Dict[str, str] = {}):
@@ -311,7 +310,7 @@ class ShieldXClient:
     #        response.raise_for_status()
     #        return response.json()
 
-    async def _get(self, path: str, headers: Dict[str, str] = {}):
+    async def _get(self, path: str,model:Type[R], headers: Dict[str, str] = {},is_list:bool =False)->Result[R| List[R], Exception]:
         """
         Método interno para solicitudes GET.
         Devuelve JSON de la respuesta. Mide tiempo y registra logs.
@@ -333,7 +332,11 @@ class ShieldXClient:
                 })
 
         response.raise_for_status()
-        return response.json()
+        raw = response.json()
+        if is_list:
+            parsed = [model.model_validate(item) for item in raw]
+            return Ok(parsed)
+        return model.model_validate(raw)
 
     #async def _put(self, path: str, payload: Any, headers: Dict[str, str] = {}):
     #    """
