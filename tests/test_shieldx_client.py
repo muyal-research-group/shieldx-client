@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 from shieldx_client.client import ShieldXClient
 from shieldx_client.models.event import EventModel
 from shieldx_client.models.rule import RuleModel
@@ -7,11 +6,27 @@ from shieldx_client.models.rule import RuleModel
 
 BASE_URL = "http://localhost:20000/api/v1"
 
+client = ShieldXClient(base_url=BASE_URL)
 
+@pytest.mark.skip("")
+@pytest.mark.asyncio
+async def test_create_event_type():
+    event_type = await client.create_event_type("TestEventType")
+    print(event_type)
 
+@pytest.mark.skip("")
+@pytest.mark.asyncio
+async def test_list_event_types():
+    event_type = await client.list_event_types()
+    assert event_type.is_ok
+    # print(event_type)
+    # assert event_type.event_type_id
+
+    
+
+@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_shieldx_client_end_to_end():
-    client = ShieldXClient(base_url=BASE_URL)
 
     # --- EventType ---
     event_type = await client.create_event_type("TestEventType")
