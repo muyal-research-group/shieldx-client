@@ -6,14 +6,19 @@ authors = [
     {name = "Ignacio Castillo",email = "ignacio.bcastillo@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.9,<4.0"
+requires-python = ">=3.10,<4.0"
 
 dependencies = [
     "httpx (>=0.28.1,<0.29.0)",
     "pydantic (>=2.11.4,<3.0.0)",
     "option (>=2.1.0,<3.0.0)",
-    "bson (>=0.5.10,<0.6.0)"
+    "bson (>=0.5.10,<0.6.0)",
+    "shieldx-core (>=0.0.1a0,<0.0.2)"
 ]
+[[tool.poetry.source]]
+name = "test"
+url = "https://test.pypi.org/simple/"
+priority = "supplemental"
 
 
 [build-system]
