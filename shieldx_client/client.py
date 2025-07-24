@@ -4,14 +4,9 @@ import time as T
 from pydantic import BaseModel
 from typing import Optional, Dict, Any,TypeVar,Type,List
 from shieldx_client.log.logger_config import get_logger
-from shieldx_client.models.event_type import EventTypeId, EventTypeModel
-from shieldx_client.models.event import EventModel
-from shieldx_client.models.rule import RuleId, RuleModel
 from option import Result,Ok,Err
-from shieldx_core.dtos import (EventTypeDTO, IDResponseDTO, MessageWithIDDTO, EventDTO, RuleDTO, MessageDTO, 
-                                TriggerDTO, TriggersTriggersDTO, EventsTriggersDTO, RulesTriggerDTO)
+import shieldx_core.dtos as DTOS
 
-from shieldx_client.models.trigger import TriggerModel
 
 L =  get_logger(name="shieldx-client")
 R = TypeVar(name="R", bound=BaseModel)
@@ -77,60 +72,67 @@ class ShieldXClient:
 
 
 
-    async def create_event(self, event: EventModel, headers: Dict[str, str] = {}) -> Result[MessageWithIDDTO, Exception]:
+    async def create_event(self, event: DTOS.EventCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
         """
         Crea un nuevo evento en el sistema ShieldX.
         """
         try:
             payload = json.loads(event.model_dump_json(by_alias=True))
-            result = await self._post("/events", payload, model=MessageWithIDDTO, headers=headers)
+            result = await self._post("/events", payload, model=DTOS.MessageWithIDDTO, headers=headers)
             return result
         except Exception as e:
             return Err(e)
 
-    async def get_all_events(self, headers: Dict[str, str] = {}) -> Result[List[EventDTO], Exception]:
+    async def get_all_events(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.EventResponseDTO], Exception]:
         """Recupera todos los eventos registrados."""
         try:
-            return await self._get("/events", model=EventDTO, headers=headers, is_list=True)
+            return await self._get("/events", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
         except Exception as e:
             return Err(e)
 
-    async def get_events_by_service(self, service_id: str, headers: Dict[str, str] = {}) -> Result[List[EventDTO], Exception]:
+    async def get_events_by_service(self, service_id: str, headers: Dict[str, str] = {}) -> Result[List[DTOS.EventResponseDTO], Exception]:
         """Filtra eventos por ID de servicio (como query param)."""
         try:
-            result = await self._get(f"/events?service_id={service_id}", model=EventDTO, headers=headers, is_list=True)
+            result = await self._get(f"/events?service_id={service_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
             return result
         except Exception as e:
             return Err(e)
 
-    async def get_events_by_service_path(self, service_id: str, headers: Dict[str, str] = {})  -> Result[List[EventDTO], Exception]:
+    async def get_events_by_service_path(self, service_id: str, headers: Dict[str, str] = {})  -> Result[List[DTOS.EventResponseDTO], Exception]:
         """Filtra eventos por ID de servicio (como path param)."""
         try:
-            result = await self._get(f"/events/service/{service_id}", model=EventDTO, headers=headers, is_list=True)
+            result = await self._get(f"/events/service/{service_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
             return result
         except Exception as e:
             return Err(e)
 
-    async def get_events_by_microservice(self, microservice_id: str, headers: Dict[str, str] = {})  -> Result[List[EventDTO], Exception]:
+    async def get_events_by_microservice(self, microservice_id: str, headers: Dict[str, str] = {})  -> Result[List[DTOS.EventResponseDTO], Exception]:
         """Filtra eventos por ID de microservicio."""
         try:
-            result = await self._get(f"/events/microservice/{microservice_id}", model=EventDTO, headers=headers, is_list=True)
+            result = await self._get(f"/events/microservice/{microservice_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
             return result
         except Exception as e:
             return Err(e)
 
-    async def get_events_by_function(self, function_id: str, headers: Dict[str, str] = {})  -> Result[List[EventDTO], Exception]:
+    async def get_events_by_function(self, function_id: str, headers: Dict[str, str] = {})  -> Result[List[DTOS.EventResponseDTO], Exception]:
         """Filtra eventos por ID de función."""
         try:
-            result = await self._get(f"/events/function/{function_id}", model=EventDTO, headers=headers, is_list=True)
+            result = await self._get(f"/events/function/{function_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
             return result
         except Exception as e:
             return Err(e)
 
-    async def update_event(self, event_id: str, data: dict, headers: Dict[str, str] = {}) -> Result[EventDTO, Exception]:
+    async def get_event_by_id(self, event_id: str, headers: Dict[str,str] = {}) ->  Result[DTOS.EventResponseDTO, Exception]:
+        try:
+            result = await self._get(f"/events/{event_id}", model=DTOS.EventResponseDTO, headers=headers)
+            return Ok(result)
+        except Exception as e:
+            return Err(e)
+
+    async def update_event(self, event_id: str, data: DTOS.EventUpdateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.EventResponseDTO, Exception]:
         """Actualiza los campos de un evento existente."""
         try:
-            result = await self._put(f"/events/{event_id}", data, model=EventDTO, headers=headers)
+            result = await self._put(f"/events/{event_id}", data, model=DTOS.EventResponseDTO, headers=headers)
             return result
         except Exception as e:
             return Err(e)
@@ -145,33 +147,33 @@ class ShieldXClient:
         
 # ---Events Types---
 
-    async def create_event_type(self, event_type: str, headers: Dict[str, str] = {}) -> Result[IDResponseDTO,Exception]:
+    async def create_event_type(self, event_type: DTOS.EventTypeCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO,Exception]:
         """Crea un nuevo tipo de evento."""
         try:
-            payload = {"event_type": event_type}
-            result = await self._post(path="/event-types", payload=payload,model=IDResponseDTO, headers=headers)
+            payload = event_type.model_dump()
+            result = await self._post(f"/event-types", payload=payload,model=DTOS.MessageWithIDDTO, headers=headers)
             return result
         except Exception as e:
             return Err(e)
         
 
-    async def list_event_types(self, headers: Dict[str, str] = {}) -> Result[List[EventTypeDTO],Exception]:
+    async def list_event_types(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.EventTypeResponseDTO],Exception]:
         """Lista todos los tipos de evento."""
         try:
-            data = await self._get(path = "/event-types", model=EventTypeDTO,headers=headers,is_list=True)
+            data = await self._get(path = "/event-types", model=DTOS.EventTypeResponseDTO,headers=headers,is_list=True)
             return data
             # return [EventTypeModel(**et) for et in data]
         except Exception as e:
             return Err(e)
         
         
-    async def get_event_type_by_id(self, event_type_id: str, headers: Dict[str, str] = {}) -> Result[EventTypeDTO, Exception]:
+    async def get_event_type_by_id(self, event_type_id: str, headers: Dict[str, str] = {}) -> Result[DTOS.EventTypeResponseDTO, Exception]:
         """Obtiene un tipo de evento específico por su ID."""
         #data = await self._get(f"/event-types/{event_type_id}", headers)
         #return EventTypeModel(**data)
 
         try:
-            result = await self._get(f"/event-types/{event_type_id}", model=EventTypeDTO, headers=headers)
+            result = await self._get(f"/event-types/{event_type_id}", model=DTOS.EventTypeResponseDTO, headers=headers)
             return Ok(result)
         except Exception as e:
             return Err(e)
@@ -193,22 +195,22 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
         
-    async def list_triggers_for_event_type(self, event_type_id: str, headers: Dict[str, str] = {})-> Result[List[EventsTriggersDTO], Exception]:
+    async def list_triggers_for_event_type(self, event_type_id: str, headers: Dict[str, str] = {})-> Result[List[DTOS.EventsTriggersDTO], Exception]:
         """Lista los triggers vinculados a un tipo de evento."""
         try:
-            return await self._get(f"/event-types/{event_type_id}/triggers",model=EventsTriggersDTO, headers=headers,is_list=True)
+            return await self._get(f"/event-types/{event_type_id}/triggers",model=DTOS.EventsTriggersDTO, headers=headers,is_list=True)
         except Exception as e:
             return Err(e)    
 
     async def replace_triggers_for_event_type(self, event_type_id: str, trigger_ids: list[str], headers: Dict[str, str] = {}) -> Result[bool, Exception]:
         """Reemplaza completamente los triggers de un tipo de evento."""
         try:
-            await self._put(f"/event-types/{event_type_id}/triggers", payload={}, model=None, headers=headers)
+            await self._put(f"/event-types/{event_type_id}/triggers", payload=trigger_ids, model=None, headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
 
-    
+
     async def unlink_trigger_from_event_type(self, event_type_id: str, trigger_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
         """Desvincula un trigger de un tipo de evento."""
         try:
@@ -219,6 +221,7 @@ class ShieldXClient:
         
         # --- Relaciones Trigger ⇄ Rule ---
 
+
     async def link_rule_to_trigger(self, trigger_id: str, rule_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
         """Asocia una regla a un trigger."""
         try:
@@ -227,19 +230,19 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-    async def list_rules_for_trigger(self, trigger_id: str, headers: Dict[str, str] = {})-> Result[List[RulesTriggerDTO], Exception]:
+    async def list_rules_for_trigger(self, trigger_id: str, headers: Dict[str, str] = {})-> Result[List[DTOS.RulesTriggerDTO], Exception]:
         """Lista las reglas asociadas a un trigger."""
         try:
-            return await self._get(f"/triggers/{trigger_id}/rules",model=RulesTriggerDTO, headers=headers,is_list=True)
+            return await self._get(f"/triggers/{trigger_id}/rules",model=DTOS.RulesTriggerDTO, headers=headers,is_list=True)
         except Exception as e:
             return Err(e)    
     
 
-    async def create_and_link_rule(self, trigger_id: str, rule_payload: RuleModel, headers: Dict[str, str] = {}) -> Result[IDResponseDTO, Exception]:
+    async def create_and_link_rule(self, trigger_id: str, rule_payload: DTOS.RuleCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
         """Crea y vincula una regla a un trigger."""
         try:
             payload = json.loads(rule_payload.model_dump_json(by_alias=True))
-            result = await self._post(f"/triggers/{trigger_id}/rules", payload, model=IDResponseDTO, headers=headers) 
+            result = await self._post(f"/triggers/{trigger_id}/rules", payload, model=DTOS.MessageWithIDDTO, headers=headers) 
             return result
         except Exception as e:
             return Err(e)
@@ -255,36 +258,36 @@ class ShieldXClient:
 
     # --- CRUD: Rule ---
 
-    async def create_rule(self, rule: RuleModel, headers: Dict[str, str] = {}) -> Result[IDResponseDTO, Exception]:
+    async def create_rule(self, rule: DTOS.RuleCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
         """Crea una nueva regla."""
         try:
             payload = json.loads(rule.model_dump_json(by_alias=True))
-            response = await self._post("/rules", payload, model=IDResponseDTO, headers=headers)
+            response = await self._post("/rules", payload, model=DTOS.MessageWithIDDTO, headers=headers)
             return response
         except Exception as e:
             return Err(e)
 
-    async def get_rule_by_id(self, rule_id: str, headers: Dict[str, str] = {})  -> Result[RuleDTO, Exception]:
+    async def get_rule_by_id(self, rule_id: str, headers: Dict[str, str] = {})  -> Result[DTOS.RuleResponseDTO, Exception]:
         """Obtiene una regla por su ID."""
         try:
-            response = await self._get(f"/rules/{rule_id}", model=RuleDTO, headers=headers)
+            response = await self._get(f"/rules/{rule_id}", model=DTOS.RuleResponseDTO, headers=headers)
             return Ok(response)
         except Exception as e:
             return Err(e)    
 
-    async def update_rule(self, rule_id: str, rule: dict, headers: Dict[str, str] = {}) -> Result[MessageDTO, Exception]:
+    async def update_rule(self, rule_id: str, rule: DTOS.RuleCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
         """Actualiza los atributos de una regla existente."""
         try:
             payload = json.loads(rule.model_dump_json(by_alias=True))
-            response = await self._put(f"/rules/{rule_id}", payload, model=MessageDTO, headers=headers)
+            response = await self._put(f"/rules/{rule_id}", payload, model=DTOS.MessageWithIDDTO, headers=headers)
             return response
         except Exception as e:
             return Err(e)
 
-    async def list_rules(self, headers: Dict[str, str] = {}) -> Result[List[RuleDTO],Exception]:
+    async def list_rules(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.RuleResponseDTO],Exception]:
         """Lista todas las reglas existentes."""
         try:
-            rules = await self._get("/rules", model=RuleDTO,headers=headers,is_list=True)
+            rules = await self._get("/rules", model=DTOS.RuleResponseDTO,headers=headers,is_list=True)
             return rules
         except Exception as e:
             return Err(e)
@@ -300,36 +303,36 @@ class ShieldXClient:
 
     # --- CRUD: Trigger (por nombre) ---
 
-    async def create_trigger(self,  trigger: TriggerModel, headers: Dict[str, str] = {}) -> Result[TriggerDTO, Exception]:
+    async def create_trigger(self,  trigger: DTOS.TriggerCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
         """Crea un nuevo trigger."""
         try:
             payload = trigger.model_dump(by_alias=True)
-            response = await self._post("/triggers/", payload, model=TriggerDTO, headers=headers)
+            response = await self._post("/triggers/", payload, model=DTOS.MessageWithIDDTO, headers=headers)
             return Ok(response)
         except Exception as e:
             return Err(e)
 
-    async def get_trigger_by_name(self, name: str, headers: Dict[str, str] = {}) -> Result[TriggerDTO, Exception]:
+    async def get_trigger_by_name(self, name: str, headers: Dict[str, str] = {}) -> Result[DTOS.TriggerResponseDTO, Exception]:
         """Obtiene un trigger por su nombre."""
         try:
-            response = await self._get(f"/triggers/{name}", model=TriggerDTO, headers=headers)
+            response = await self._get(f"/triggers/{name}", model=DTOS.TriggerResponseDTO, headers=headers)
             return Ok(response)
         except Exception as e:
             return Err(e)
 
-    async def get_all_triggers(self, headers: Dict[str, str] = {}) -> Result[List[TriggerDTO], Exception]:
+    async def get_all_triggers(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.TriggerResponseDTO], Exception]:
         """Lista todos los triggers registrados."""
         try:
-            response = await self._get("/triggers/", model=TriggerDTO, headers=headers, is_list=True)
+            response = await self._get("/triggers/", model=DTOS.TriggerResponseDTO, headers=headers, is_list=True)
             return Ok(response)
         except Exception as e:
             return Err(e)
 
-    async def update_trigger(self, name: str, updated_trigger: dict, headers: Dict[str, str] = {}) -> Result[TriggerDTO, Exception]:
+    async def update_trigger(self, name: str, updated_trigger: DTOS.TriggerCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
         """Actualiza un trigger existente."""
         try:
             payload = updated_trigger.model_dump(by_alias=True)
-            response = await self._put(f"/triggers/{name}", payload, model=TriggerDTO, headers=headers)
+            response = await self._put(f"/triggers/{name}", payload, model=DTOS.MessageWithIDDTO, headers=headers)
             return Ok(response)
         except Exception as e:
             return Err(e)
@@ -355,20 +358,20 @@ class ShieldXClient:
             return Err(e)
 
 
-    async def list_trigger_children(self, parent_id: str, headers: Dict[str, str] = {}) -> Result[List[TriggersTriggersDTO], Exception]:
+    async def list_trigger_children(self, parent_id: str, headers: Dict[str, str] = {}) -> Result[List[DTOS.TriggersTriggersDTO], Exception]:
         """Lista los triggers hijos de un trigger padre."""
         try:
             response = await self._get(
-                f"/triggers/{parent_id}/children",model=TriggersTriggersDTO, headers=headers,is_list=True)
+                f"/triggers/{parent_id}/children",model=DTOS.TriggersTriggersDTO, headers=headers,is_list=True)
             return response
         except Exception as e:
             return Err(e)
         
 
-    async def list_trigger_parents(self, child_id: str, headers: Dict[str, str] = {}) -> Result[List[TriggersTriggersDTO], Exception]:
+    async def list_trigger_parents(self, child_id: str, headers: Dict[str, str] = {}) -> Result[List[DTOS.TriggersTriggersDTO], Exception]:
         """Lista los triggers padres de un trigger hijo."""
         try:
-            response = await self._get(f"/triggers/{child_id}/parents",model=TriggersTriggersDTO,headers=headers,is_list=True)
+            response = await self._get(f"/triggers/{child_id}/parents",model=DTOS.TriggersTriggersDTO,headers=headers,is_list=True)
             return response
         except Exception as e:
             return Err(e)
@@ -383,18 +386,16 @@ class ShieldXClient:
             return Err(e)
 
 
-
-
     async def list_trigger_parents(
         self,
         child_id: str,
         headers: Dict[str, str] = {}
-    ) -> Result[List[TriggersTriggersDTO], Exception]:
+    ) -> Result[List[DTOS.TriggersTriggersDTO], Exception]:
         """Lista los triggers padres de un trigger hijo."""
         try:
             response = await self._get(
                 f"/triggers/{child_id}/parents",
-                model=List[TriggersTriggersDTO],
+                model=List[DTOS.TriggersTriggersDTO],
                 headers=headers,
                 is_list=True
             )
