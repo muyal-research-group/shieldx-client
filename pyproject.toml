@@ -13,7 +13,7 @@ dependencies = [
     "pydantic (>=2.11.4,<3.0.0)",
     "option (>=2.1.0,<3.0.0)",
     "bson (>=0.5.10,<0.6.0)",
-    "shieldx-core (>=0.0.1a0,<0.0.2)"
+    "shieldx-core (==0.0.1a5)"
 ]
 [[tool.poetry.source]]
 name = "test"
@@ -21,6 +21,9 @@ url = "https://test.pypi.org/simple/"
 priority = "supplemental"
 
 
+
+[tool.poetry.dependencies]
+shieldx-core = {source = "test"}
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
