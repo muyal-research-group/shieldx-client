@@ -1,11 +1,8 @@
 from uuid import uuid4
 import pytest
 from shieldx_client.client import ShieldXClient
-from shieldx_client.models.event import EventModel
-from shieldx_client.models.rule import RuleModel
-from shieldx_client.models.trigger import TriggerModel
-from shieldx_client.models.event_type import EventTypeModel
-from shieldx_core.dtos import TriggerDTO, IDResponseDTO
+from shieldx_core.dtos import (TriggerCreateDTO, MessageWithIDDTO, EventTypeCreateDTO, EventCreateDTO, 
+                                RuleCreateDTO, RuleUpdateDTO, TriggerUpdateDTO)
 
 
 
@@ -16,7 +13,8 @@ client = ShieldXClient(base_url=BASE_URL)
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_create_event_type():
-    event_type = await client.create_event_type("TestEventType")
+    event_type = await client.create_event_type(EventTypeCreateDTO(event_type="TestEventType"))
+
     print(event_type)
 
 #@pytest.mark.skip("")
@@ -31,7 +29,7 @@ async def test_list_event_types():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_event_type_by_id():
-    creation_result = await client.create_event_type("TestEventType")
+    creation_result = await client.create_event_type(EventTypeCreateDTO(event_type="TestEventType"))
     
     assert creation_result.is_ok
     created_event_type = creation_result.unwrap()
@@ -49,7 +47,7 @@ async def test_get_event_type_by_id():
 @pytest.mark.asyncio
 async def test_delete_event_type():
     # Crear un tipo de evento para eliminar
-    creation_result = await client.create_event_type("EventToDelete")
+    creation_result = await client.create_event_type(EventTypeCreateDTO(event_type="EventToDelete"))
     assert creation_result.is_ok
     created_event = creation_result.unwrap()
     event_type_id = created_event.id
@@ -65,8 +63,8 @@ async def test_delete_event_type():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_create_Event():
-    await client.create_event_type("EventForEvents")
-    event = EventModel(
+    await client.create_event_type(EventTypeCreateDTO(event_type="EventForEvents"))
+    event = EventCreateDTO(
         service_id="s1",
         microservice_id="m1",
         function_id="f1",
@@ -77,7 +75,7 @@ async def test_create_Event():
     assert created.is_ok
     dto = created.unwrap()
     assert dto.message == "Evento creado exitosamente"
-    assert dto.event_id is not None
+    assert dto.id is not None  # ✅ CAMBIO AQUÍ
 
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
@@ -105,6 +103,34 @@ async def test_get_events_by_microservice():
     assert result.is_ok
     assert isinstance(result.unwrap(), list)
 
+@pytest.mark.asyncio
+async def test_get_event_by_id():
+    # Crear tipo de evento
+    await client.create_event_type(EventTypeCreateDTO(event_type="EventForGetByID"))
+
+    # Crear evento
+    event = EventCreateDTO(
+        service_id="s1",
+        microservice_id="m1",
+        function_id="f1",
+        event_type="EventForGetByID",
+        payload={"key": "value"}
+    )
+    creation_result = await client.create_event(event)
+    assert creation_result.is_ok
+
+    created_event = creation_result.unwrap()
+    event_id = created_event.id
+
+    # Obtener el evento por ID
+    get_result = await client.get_event_by_id(event_id)
+    assert get_result.is_ok
+
+    fetched_event = get_result.unwrap()
+    assert fetched_event.Event_id == event_id
+    assert fetched_event.service_id == "s1"
+    assert fetched_event.payload == {"key": "value"}
+
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_events_by_function():
@@ -117,7 +143,7 @@ async def test_get_events_by_function():
 async def test_update_event():
     await client.create_event_type("EventForUpdate")
     # Crear evento inicial
-    event = EventModel(
+    event = EventCreateDTO(
         service_id="s1",
         microservice_id="m1",
         function_id="f1",
@@ -129,7 +155,7 @@ async def test_update_event():
 
     # Extraer el ID del evento recién creado
     created = creation_result.unwrap()
-    event_id = created.event_id  # <- Aquí NO necesitas uuid4()
+    event_id = created.id  # <- Aquí NO necesitas uuid4()
 
     # Paso 3: Actualizar el evento
     update_data = {"payload": {"new_key": "new_value"}}
@@ -142,7 +168,7 @@ async def test_update_event():
 @pytest.mark.asyncio
 async def test_delete_event():
     # Crear evento inicial
-    event = EventModel(
+    event = EventCreateDTO(
         service_id="s1",
         microservice_id="m1",
         function_id="f1",
@@ -155,13 +181,13 @@ async def test_delete_event():
 
 
     # Eliminar evento
-    delete_result = await client.delete_event(created_event.event_id)
+    delete_result = await client.delete_event(created_event.id)
     assert delete_result.is_ok
 
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_create_rule():
-    rule = RuleModel(
+    rule = RuleCreateDTO(
         target="mictlanx.get",
         parameters={
             "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -176,7 +202,7 @@ async def test_create_rule():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_rule_by_id():
-    rule = RuleModel(
+    rule = RuleCreateDTO(
         target="mictlanx.get",
         parameters={
             "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -205,7 +231,7 @@ async def test_list_rules():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_update_rule():
-    rule = RuleModel(
+    rule = RuleCreateDTO(
         target="original_function",
         parameters={
             "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -218,7 +244,7 @@ async def test_update_rule():
     assert created.is_ok
     rule_id = created.unwrap()
     rule_id = rule_id.id
-    updated_rule = RuleModel(
+    updated_rule = RuleUpdateDTO(
         target="updated_function",
         parameters={
             "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -234,7 +260,7 @@ async def test_update_rule():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_delete_rule():
-    rule = RuleModel(
+    rule = RuleCreateDTO(
         target="to_be_deleted",
         parameters={
             "x": {"type": "bool", "description": "to be removed"}
@@ -252,9 +278,9 @@ async def test_delete_rule():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_create_trigger():
-    trigger = TriggerModel(
-        name="test_trigger_create",
-        rule=RuleModel(
+    trigger = TriggerCreateDTO(
+        name=f"test_trigger_create-{uuid4()}",
+        rule=RuleCreateDTO(
             target="mictlanx.get",
             parameters={
                 "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -270,10 +296,10 @@ async def test_create_trigger():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_trigger_by_name():
-    name = "test_trigger_get"
-    trigger = TriggerModel(
+    name = f"test_trigger_get-{uuid4()}"
+    trigger = TriggerCreateDTO(
         name=name,
-        rule=RuleModel(
+        rule=RuleCreateDTO(
             target="mictlanx.get",
             parameters={
                 "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -301,10 +327,11 @@ async def test_list_triggers():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_update_trigger():
-    name = "test_trigger_update"
-    trigger = TriggerModel(
+    
+    name = f"test_trigger_update-{uuid4()}"
+    trigger = TriggerCreateDTO(
         name=name,
-        rule=RuleModel(
+        rule=RuleCreateDTO(
             target="original_function",
             parameters={
                 "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -316,9 +343,9 @@ async def test_update_trigger():
     created = await client.create_trigger(trigger)
     assert created.is_ok
 
-    updated_trigger = TriggerModel(
+    updated_trigger = TriggerUpdateDTO(
         name=name,
-        rule=RuleModel(
+        rule=RuleUpdateDTO(
             target="updated_function",
             parameters={
                 "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -336,9 +363,9 @@ async def test_update_trigger():
 @pytest.mark.asyncio
 async def test_delete_trigger():
     name = "test_trigger_delete"
-    trigger = TriggerModel(
+    trigger = TriggerCreateDTO(
         name=name,
-        rule=RuleModel(
+        rule=RuleCreateDTO(
             target="to_be_deleted",
             parameters={
                 "x": {"type": "bool", "description": "to be removed"}
@@ -355,11 +382,10 @@ async def test_delete_trigger():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_link_trigger_to_event_type():
-    event_type_id = f"event_type_id-{uuid4()}"
     trigger_id = f"trigger_id-{uuid4()}"
 
-    event_type_result = await client.create_event_type(event_type=event_type_id)
-    trigger_result = await client.create_trigger(TriggerModel(name=trigger_id))
+    event_type_result = await client.create_event_type(EventTypeCreateDTO(event_type="TestEventType"))
+    trigger_result = await client.create_trigger(TriggerCreateDTO(name=trigger_id))
 
     assert event_type_result.is_ok
     assert trigger_result.is_ok
@@ -368,11 +394,11 @@ async def test_link_trigger_to_event_type():
     event_type_dto = event_type_result.unwrap()
     trigger_dto = trigger_result.unwrap().unwrap()
 
-    assert isinstance(event_type_dto, IDResponseDTO)
-    assert isinstance(trigger_dto, TriggerDTO)
+    assert isinstance(event_type_dto, MessageWithIDDTO)
+    assert isinstance(trigger_dto, MessageWithIDDTO)
 
     event_type_id = event_type_dto.id
-    trigger_id = trigger_dto.trigger_id
+    trigger_id = trigger_dto.id
 
     link_result = await client.link_trigger_to_event_type(event_type_id, trigger_id)
     assert link_result.is_ok
@@ -390,10 +416,10 @@ async def test_link_trigger_to_event_type():
     parents = parents_result.unwrap()
     
     
-
+#@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_link_rule_to_trigger():
-    rule = RuleModel(
+    rule = RuleCreateDTO(
         target="mictlanx.get",
         parameters={
             "bucket_id": {"type": "string", "description": "ID del bucket"},
@@ -404,7 +430,7 @@ async def test_link_rule_to_trigger():
     trigger_id = f"trigger_id-{uuid4()}"
 
     rule_result = await client.create_rule(rule)
-    trigger_result = await client.create_trigger(TriggerModel(name=trigger_id))
+    trigger_result = await client.create_trigger(TriggerCreateDTO(name=trigger_id))
 
     assert rule_result.is_ok
     assert trigger_result.is_ok
@@ -413,11 +439,11 @@ async def test_link_rule_to_trigger():
     rule_dto = rule_result.unwrap()
     trigger_dto = trigger_result.unwrap().unwrap()
 
-    assert isinstance(rule_dto, IDResponseDTO)
-    assert isinstance(trigger_dto, TriggerDTO)
+    assert isinstance(rule_dto, MessageWithIDDTO)
+    assert isinstance(trigger_dto, MessageWithIDDTO)
 
     rule_id = rule_dto.id
-    trigger_id = trigger_dto.trigger_id
+    trigger_id = trigger_dto.id
 
     link_result = await client.link_rule_to_trigger(trigger_id, rule_id)
     assert link_result.is_ok
@@ -436,14 +462,14 @@ async def test_link_rule_to_trigger():
     
 
 
-#@pytest.mark.skip("")
+#@pytest.mark.skip("")  
 @pytest.mark.asyncio
 async def test_link_and_unlink_triggers():
     parent_name = f"ParentTrigger-{uuid4()}"
     child_name = f"ChildTrigger-{uuid4()}"
 
-    parent_result = await client.create_trigger(TriggerModel(name=parent_name))
-    child_result = await client.create_trigger(TriggerModel(name=child_name))
+    parent_result = await client.create_trigger(TriggerCreateDTO(name=parent_name))
+    child_result = await client.create_trigger(TriggerCreateDTO(name=child_name))
 
     assert parent_result.is_ok
     assert child_result.is_ok
@@ -452,11 +478,11 @@ async def test_link_and_unlink_triggers():
     parent_dto = parent_result.unwrap().unwrap()
     child_dto = child_result.unwrap().unwrap()
 
-    assert isinstance(parent_dto, TriggerDTO)
-    assert isinstance(child_dto, TriggerDTO)
+    assert isinstance(parent_dto, MessageWithIDDTO)
+    assert isinstance(child_dto, MessageWithIDDTO)
 
-    parent_id = parent_dto.trigger_id
-    child_id = child_dto.trigger_id
+    parent_id = parent_dto.id
+    child_id = child_dto.id
 
     link_result = await client.link_trigger_child(parent_id, child_id)
     assert link_result.is_ok
