@@ -127,7 +127,7 @@ async def test_get_event_by_id():
     assert get_result.is_ok
 
     fetched_event = get_result.unwrap()
-    assert fetched_event.Event_id == event_id
+    assert fetched_event.event_id == event_id
     assert fetched_event.service_id == "s1"
     assert fetched_event.payload == {"key": "value"}
 
