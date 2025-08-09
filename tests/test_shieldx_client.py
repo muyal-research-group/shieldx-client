@@ -141,7 +141,8 @@ async def test_get_events_by_function():
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_update_event():
-    await client.create_event_type("EventForUpdate")
+    
+    await client.create_event_type(EventTypeCreateDTO(event_type="EventForUpdate"))
     # Crear evento inicial
     event = EventCreateDTO(
         service_id="s1",
