@@ -5,27 +5,41 @@ from pydantic import BaseModel
 from typing import Optional, Dict, Any,TypeVar,Type,List
 from shieldx_client.log.logger_config import get_logger
 from option import Result,Ok,Err
+from pathlib import Path
 import shieldx_core.dtos as DTOS
-
+from shieldx_client.choreography.interpreter import ChoreographyInterpreter
+import asyncio
 
 L =  get_logger(name="shieldx-client")
 R = TypeVar(name="R", bound=BaseModel)
 
+"""Async HTTP client for the ShieldX API.
 
+Provides CRUD for:
+- Events, Event Types, Rules, Triggers
+- Relations: EventType⇄Trigger, Trigger⇄Rule, Trigger⇄Trigger
+
+Public methods return `option.Result[T, Exception]`. Use `is_ok`, `unwrap`,
+and `unwrap_err` instead of catching exceptions in normal flows.
+"""
 class ShieldXClient:
-    """
-    Client for interacting with the ShieldX API, specifically for managing event types (`event-types`).
+    """Client for interacting with the ShieldX backend.
 
-    This client supports asynchronous operations for creating and deleting event types using httpx.
-    It also allows injecting additional custom headers (e.g., for tracing or extended authentication).
-    """
+    Manages shared headers, Pydantic serialization/validation, and basic logging.
 
+    Attributes:
+        base_url: Base API URL (without a trailing slash).
+        headers: Default headers (JSON and optional Authorization).
+    """
     def __init__(self, base_url: str, token: Optional[str] = None):
-        """
-        Initialize a new instance of the ShieldXClient.
+        """Initialize the client.
 
-        :param base_url: Base URL of the ShieldX API server (e.g., http://localhost:8000).
-        :param token: Optional Bearer token for authentication. If provided, it will be included in request headers.
+        Args:
+            base_url: e.g. "http://localhost:20000/api/v1".
+            token: Optional Bearer token added as `Authorization: Bearer <token>`.
+
+        Note:
+            `base_url` is normalized to not end with a slash.
         """
         self.base_url = base_url.rstrip("/")
         self.headers = {
@@ -33,48 +47,81 @@ class ShieldXClient:
         }
         if token:
             self.headers["Authorization"] = f"Bearer {token}"
-#
-    #async def create_event_type(self, event_type: str, headers: Dict[str, str] = {}) -> EventTypeId:
-    #    """
-    #    Create a new event type in the ShieldX system.
-#
-    #    :param event_type: The name or label of the event type to be created.
-    #    :param headers: Optional dictionary of additional headers to include in the request.
-    #    :return: The ID of the newly created event type.
-    #    :raises httpx.HTTPStatusError: If the API returns an HTTP error response.
-    #    """
-    #    payload = {"event_type": event_type}
-    #    __headers = {**self.headers, **headers}
-#
-    #    async with httpx.AsyncClient(headers=__headers) as client:
-    #        response = await client.post(f"{self.base_url}/event-types", json=payload)
-    #        response.raise_for_status()
-    #        response_json = await response.json()
-    #        return response_json.get("event_type_id", "")
-#
-    #async def delete_event_type(self, event_type_id: str, headers: Dict[str, str] = {}) -> EventTypeId:
-    #    """
-    #    Delete an existing event type by its ID.
-#
-    #    :param event_type_id: The ID of the event type to be deleted.
-    #    :param headers: Optional dictionary of additional headers to include in the request.
-    #    :return: The ID of the deleted event type (as returned by the API).
-    #    :raises httpx.HTTPStatusError: If the API returns an HTTP error response.
-    #    """
-    #    __headers = {**self.headers, **headers}
-    #    async with httpx.AsyncClient(headers=__headers) as client:
-    #        response = await client.delete(f"{self.base_url}/event-types/{event_type_id}")
-    #        response.raise_for_status()
-    #        response_json = await response.json()
-    #        return response_json.get("event_type_id", "")
-    #    
-# --- Events ---
 
 
+    def interpret(self, choreography_path_or_text: str, *, as_text: bool = False) -> Dict[str, Any]:
+        """Interpret a choreography YAML and index entities (blocking).
 
-    async def create_event(self, event: DTOS.EventCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
+        Internally uses `ChoreographyInterpreter`. Prefer `interpret_async` in async code.
+
+        Args:
+            choreography_path_or_text: File path to a YAML or the YAML text itself if `as_text=True`.
+            as_text: When True, treat the input as raw YAML text.
+
+        Returns:
+            Dict with created/found IDs:
+            {
+                "event_types": {name: id, ...},
+                "triggers": {name: id, ...},
+                "rules": {target: id, ...},
+                "links_count": int
+            }
+
+        Raises:
+            FileNotFoundError: When a file path is provided and does not exist.
+            RuntimeError: If an event loop is already running (use `interpret_async` instead).
+            ValueError: If the YAML does not match the schema.
         """
-        Crea un nuevo evento en el sistema ShieldX.
+        async def _runner(yaml_text: str) -> Dict[str, Any]:
+            interpreter = ChoreographyInterpreter(self)
+            return await interpreter.index_from_text(yaml_text)
+
+        if as_text:
+            yaml_text = choreography_path_or_text
+        else:
+            p = Path(choreography_path_or_text)
+            if not p.exists():
+                raise FileNotFoundError(f"No se encontró el archivo: {p}")
+            yaml_text = p.read_text(encoding="utf-8")
+
+        try:
+            return asyncio.run(_runner(yaml_text))
+        except RuntimeError as re:
+            raise RuntimeError(
+                "Ya hay un event loop ejecutándose. Use interpret_async(...)."
+            ) from re
+
+    async def interpret_async(self, choreography_path_or_text: str, *, as_text: bool = False) -> Dict[str, Any]:
+        """Interpret a choreography YAML and index entities (async).
+
+        Args:
+            choreography_path_or_text: File path to the YAML or the YAML text if `as_text=True`.
+            as_text: When True, treat the input as raw YAML text.
+
+        Returns:
+            Same structure as `interpret`.
+        """
+        if as_text:
+            yaml_text = choreography_path_or_text
+        else:
+            p = Path(choreography_path_or_text)
+            if not p.exists():
+                raise FileNotFoundError(f"No se encontró el archivo: {p}")
+            yaml_text = p.read_text(encoding="utf-8")
+        interpreter = ChoreographyInterpreter(self)
+        return await interpreter.index_from_text(yaml_text)
+    
+
+# --- Events ---
+    async def create_event(self, event: DTOS.EventCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
+        """Create a new Event.
+
+        Args:
+            event: DTO with service_id, microservice_id, function_id, event_type, and payload.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `MessageWithIDDTO` (contains message and created event `id`).
         """
         try:
             payload = json.loads(event.model_dump_json(by_alias=True))
@@ -84,14 +131,29 @@ class ShieldXClient:
             return Err(e)
 
     async def get_all_events(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.EventResponseDTO], Exception]:
-        """Recupera todos los eventos registrados."""
+        """List all Events.
+
+        Args:
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `EventResponseDTO`.
+        """
         try:
             return await self._get("/events", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
         except Exception as e:
             return Err(e)
 
     async def get_events_by_service(self, service_id: str, headers: Dict[str, str] = {}) -> Result[List[DTOS.EventResponseDTO], Exception]:
-        """Filtra eventos por ID de servicio (como query param)."""
+        """Filter Events by `service_id` (query parameter).
+
+        Args:
+            service_id: Service identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `EventResponseDTO`.
+        """
         try:
             result = await self._get(f"/events?service_id={service_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
             return result
@@ -107,7 +169,15 @@ class ShieldXClient:
             return Err(e)
 
     async def get_events_by_microservice(self, microservice_id: str, headers: Dict[str, str] = {})  -> Result[List[DTOS.EventResponseDTO], Exception]:
-        """Filtra eventos por ID de microservicio."""
+        """Filter Events by `microservice_id`.
+
+        Args:
+            microservice_id: Microservice identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `EventResponseDTO`.
+        """
         try:
             result = await self._get(f"/events/microservice/{microservice_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
             return result
@@ -115,7 +185,15 @@ class ShieldXClient:
             return Err(e)
 
     async def get_events_by_function(self, function_id: str, headers: Dict[str, str] = {})  -> Result[List[DTOS.EventResponseDTO], Exception]:
-        """Filtra eventos por ID de función."""
+        """Filter Events by `function_id`.
+
+        Args:
+            function_id: Function identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `EventResponseDTO`.
+        """
         try:
             result = await self._get(f"/events/function/{function_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
             return result
@@ -123,14 +201,32 @@ class ShieldXClient:
             return Err(e)
 
     async def get_event_by_id(self, event_id: str, headers: Dict[str,str] = {}) ->  Result[DTOS.EventResponseDTO, Exception]:
+        """Get an Event by ID.
+
+        Args:
+            event_id: Event identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `EventResponseDTO`.
+        """
         try:
             result = await self._get(f"/events/{event_id}", model=DTOS.EventResponseDTO, headers=headers)
-            return Ok(result)
+            return result
         except Exception as e:
             return Err(e)
 
     async def update_event(self, event_id: str, data: DTOS.EventUpdateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.EventResponseDTO, Exception]:
-        """Actualiza los campos de un evento existente."""
+        """Update an Event.
+
+        Args:
+            event_id: Event identifier.
+            data: DTO with the fields to update.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with the updated `EventResponseDTO`.
+        """
         try:
             result = await self._put(f"/events/{event_id}", data, model=DTOS.EventResponseDTO, headers=headers)
             return result
@@ -138,57 +234,171 @@ class ShieldXClient:
             return Err(e)
 
     async def delete_event(self, event_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Elimina un evento del sistema."""
+        """Delete an Event by ID.
+
+        Args:
+            event_id: Event identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the deletion succeeded.
+        """
         try:
             await self._delete(f"/events/{event_id}", headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
-        
+
 # ---Events Types---
 
     async def create_event_type(self, event_type: DTOS.EventTypeCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO,Exception]:
-        """Crea un nuevo tipo de evento."""
+        """Create an Event Type.
+
+        Args:
+            event_type: DTO with `event_type`.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `MessageWithIDDTO` (created id).
+        """
         try:
             payload = event_type.model_dump()
             result = await self._post(f"/event-types", payload=payload,model=DTOS.MessageWithIDDTO, headers=headers)
             return result
         except Exception as e:
             return Err(e)
-        
+
+    async def find_event_type_by_name_dict(self, event_type: str) -> dict | None:
+        """Find an Event Type by name.
+
+        Args:
+            event_type: Event Type name.
+
+        Returns:
+            Dict `{"id": str, "event_type": str}` if found, otherwise `None`.
+        """
+        res = await self.list_event_types()
+        if res.is_ok:
+            for dto in res.unwrap():
+                if dto.event_type == event_type:
+                    return {"id": dto.event_type_id, "event_type": dto.event_type}
+            return None
+        raise res.unwrap_err()
+
+
+    async def create_event_type_dict(self, event_type_name: str) -> dict:
+        """Create an Event Type and return a simple dict.
+
+        Args:
+            event_type_name: Event Type name.
+
+        Returns:
+            Dict `{"id": str, "event_type": str}`.
+        """
+        req = DTOS.EventTypeCreateDTO(event_type=event_type_name)
+        res = await self.create_event_type(req)
+        if res.is_ok:
+            msg = res.unwrap()  # MessageWithIDDTO
+            return {"id": msg.id, "event_type": event_type_name}
+        raise res.unwrap_err()
+
+
 
     async def list_event_types(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.EventTypeResponseDTO],Exception]:
-        """Lista todos los tipos de evento."""
+        """List all Event Types.
+
+        Args:
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `EventTypeResponseDTO`.
+        """
         try:
             data = await self._get(path = "/event-types", model=DTOS.EventTypeResponseDTO,headers=headers,is_list=True)
             return data
             # return [EventTypeModel(**et) for et in data]
         except Exception as e:
             return Err(e)
-        
-        
+
     async def get_event_type_by_id(self, event_type_id: str, headers: Dict[str, str] = {}) -> Result[DTOS.EventTypeResponseDTO, Exception]:
-        """Obtiene un tipo de evento específico por su ID."""
+        """Get an Event Type by ID.
+
+        Args:
+            event_type_id: Event Type identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `EventTypeResponseDTO`.
+        """
         #data = await self._get(f"/event-types/{event_type_id}", headers)
         #return EventTypeModel(**data)
 
         try:
             result = await self._get(f"/event-types/{event_type_id}", model=DTOS.EventTypeResponseDTO, headers=headers)
-            return Ok(result)
+            return result
         except Exception as e:
             return Err(e)
 
     async def delete_event_type(self, event_type_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
+        """Delete an Event Type by ID.
+
+        Args:
+            event_type_id: Event Type identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the deletion succeeded.
+        """
         try:
-            """Elimina un tipo de evento existente."""
             await self._delete(f"/event-types/{event_type_id}", headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
     # --- Relaciones EventType ⇄ Trigger ---
 
+    async def is_trigger_bound_to_event_type_bool(self, event_type_id: str, trigger_id: str) -> bool:
+        """Check whether a Trigger is bound to an Event Type.
+
+        Args:
+            event_type_id: Event Type ID.
+            trigger_id: Trigger ID.
+
+        Returns:
+            True if the relation exists; otherwise False.
+        """
+        res = await self.list_triggers_for_event_type(event_type_id)
+        if res.is_ok:
+            return any(link.trigger_id == trigger_id for link in res.unwrap())
+        raise res.unwrap_err()
+
+
+    async def bind_event_type_to_trigger_dict(self, event_type_id: str, trigger_id: str) -> dict:
+        """Bind a Trigger to an Event Type.
+
+        Args:
+            event_type_id: Event Type ID.
+            trigger_id: Trigger ID.
+
+        Returns:
+            Dict `{"event_type_id": str, "trigger_id": str}`.
+        """
+        res = await self.link_trigger_to_event_type(event_type_id, trigger_id)
+        if res.is_ok:
+            return {"event_type_id": event_type_id, "trigger_id": trigger_id}
+        raise res.unwrap_err()
+
+
     async def link_trigger_to_event_type(self, event_type_id: str, trigger_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Asocia un trigger a un tipo de evento."""
+        """Create the EventType⇄Trigger relation.
+
+        Args:
+            event_type_id: Event Type ID.
+            trigger_id: Trigger ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the link was created.
+        """
         try:
             await self._post(f"/event-types/{event_type_id}/triggers/{trigger_id}", payload={}, model=None, headers=headers)
             return Ok(True)
@@ -196,23 +406,48 @@ class ShieldXClient:
             return Err(e)
         
     async def list_triggers_for_event_type(self, event_type_id: str, headers: Dict[str, str] = {})-> Result[List[DTOS.EventsTriggersDTO], Exception]:
-        """Lista los triggers vinculados a un tipo de evento."""
+        """List Triggers bound to an Event Type.
+
+        Args:
+            event_type_id: Event Type ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `EventsTriggersDTO`.
+        """
         try:
             return await self._get(f"/event-types/{event_type_id}/triggers",model=DTOS.EventsTriggersDTO, headers=headers,is_list=True)
         except Exception as e:
             return Err(e)    
 
     async def replace_triggers_for_event_type(self, event_type_id: str, trigger_ids: list[str], headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Reemplaza completamente los triggers de un tipo de evento."""
+        """Replace all Triggers bound to an Event Type.
+
+        Args:
+            event_type_id: Event Type ID.
+            trigger_ids: Trigger IDs to remain linked.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the replacement succeeded.
+        """
         try:
             await self._put(f"/event-types/{event_type_id}/triggers", payload=trigger_ids, model=None, headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
 
-
     async def unlink_trigger_from_event_type(self, event_type_id: str, trigger_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Desvincula un trigger de un tipo de evento."""
+        """Remove the EventType⇄Trigger relation.
+
+        Args:
+            event_type_id: Event Type ID.
+            trigger_id: Trigger ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the unlink succeeded.
+        """
         try:
             await self._delete(f"/event-types/{event_type_id}/triggers/{trigger_id}", headers)
             return Ok(True)
@@ -222,8 +457,51 @@ class ShieldXClient:
         # --- Relaciones Trigger ⇄ Rule ---
 
 
+# --- Relaciones Trigger ⇄ Rule ---
+
+    async def is_rule_bound_to_trigger_bool(self, trigger_id: str, rule_id: str) -> bool:
+        """Check whether a Rule is bound to a Trigger.
+
+        Args:
+            trigger_id: Trigger ID.
+            rule_id: Rule ID.
+
+        Returns:
+            True if the relation exists; otherwise False.
+        """
+        res = await self.list_rules_for_trigger(trigger_id)
+        if res.is_ok:
+            return any(link.rule_id == rule_id for link in res.unwrap())
+        raise res.unwrap_err()
+
+
+    async def bind_rule_to_trigger_dict(self, trigger_id: str, rule_id: str) -> dict:
+        """Bind a Rule to a Trigger.
+
+        Args:
+            trigger_id: Trigger ID.
+            rule_id: Rule ID.
+
+        Returns:
+            Dict `{"trigger_id": str, "rule_id": str}`.
+        """
+        res = await self.link_rule_to_trigger(trigger_id, rule_id)
+        if res.is_ok:
+            return {"trigger_id": trigger_id, "rule_id": rule_id}
+        raise res.unwrap_err()
+
+
     async def link_rule_to_trigger(self, trigger_id: str, rule_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Asocia una regla a un trigger."""
+        """Create the Trigger⇄Rule relation.
+
+        Args:
+            trigger_id: Trigger ID.
+            rule_id: Rule ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the link was created.
+        """
         try:
             await self._post(f"/triggers/{trigger_id}/rules/{rule_id}", payload={}, model=None, headers=headers)
             return Ok(True)
@@ -231,15 +509,31 @@ class ShieldXClient:
             return Err(e)
 
     async def list_rules_for_trigger(self, trigger_id: str, headers: Dict[str, str] = {})-> Result[List[DTOS.RulesTriggerDTO], Exception]:
-        """Lista las reglas asociadas a un trigger."""
+        """List Rules bound to a Trigger.
+
+        Args:
+            trigger_id: Trigger ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `RulesTriggerDTO`.
+        """
         try:
             return await self._get(f"/triggers/{trigger_id}/rules",model=DTOS.RulesTriggerDTO, headers=headers,is_list=True)
         except Exception as e:
             return Err(e)    
-    
 
     async def create_and_link_rule(self, trigger_id: str, rule_payload: DTOS.RuleCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
-        """Crea y vincula una regla a un trigger."""
+        """Create a Rule and link it to a Trigger.
+
+        Args:
+            trigger_id: Destination Trigger ID.
+            rule_payload: Rule creation DTO.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `MessageWithIDDTO` for the created Rule.
+        """
         try:
             payload = json.loads(rule_payload.model_dump_json(by_alias=True))
             result = await self._post(f"/triggers/{trigger_id}/rules", payload, model=DTOS.MessageWithIDDTO, headers=headers) 
@@ -247,19 +541,70 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-
     async def unlink_rule_from_trigger(self, trigger_id: str, rule_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Desvincula una regla de un trigger."""
+        """Remove the Trigger⇄Rule relation.
+
+        Args:
+            trigger_id: Trigger ID.
+            rule_id: Rule ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the unlink succeeded.
+        """
         try:
             await self._delete(f"/triggers/{trigger_id}/rules/{rule_id}", headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
 
-    # --- CRUD: Rule ---
+# --- CRUD Rule (helpers estilo dict) ---
+
+    async def find_rule_by_target_dict(self, target: str) -> dict | None:
+        """Find a Rule by `target`.
+
+        Args:
+            target: Target function/action.
+
+        Returns:
+            Dict `{"id": str, "target": str}` if found, otherwise `None`.
+        """
+        res = await self.list_rules()
+        if res.is_ok:
+            for dto in res.unwrap():
+                if dto.target == target:
+                    return {"id": dto.rule_id, "target": dto.target}
+            return None
+        raise res.unwrap_err()
+
+
+    async def create_rule_dict(self, target: str, parameters: dict) -> dict:
+        """Create a Rule and return a small dict.
+
+        Args:
+            target: Rule target.
+            parameters: Parameter map `{name: {type, description, ...}}`.
+
+        Returns:
+            Dict `{"id": str, "target": str}`.
+        """
+        res = await self.create_rule(DTOS.RuleCreateDTO(target=target, parameters=parameters))
+        if res.is_ok:
+            msg = res.unwrap()  # MessageWithIDDTO
+            return {"id": msg.id, "target": target}
+        raise res.unwrap_err()
+
 
     async def create_rule(self, rule: DTOS.RuleCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
-        """Crea una nueva regla."""
+        """Create a new Rule.
+
+        Args:
+            rule: DTO with `target` and `parameters`.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `MessageWithIDDTO` (created id).
+        """
         try:
             payload = json.loads(rule.model_dump_json(by_alias=True))
             response = await self._post("/rules", payload, model=DTOS.MessageWithIDDTO, headers=headers)
@@ -268,15 +613,32 @@ class ShieldXClient:
             return Err(e)
 
     async def get_rule_by_id(self, rule_id: str, headers: Dict[str, str] = {})  -> Result[DTOS.RuleResponseDTO, Exception]:
-        """Obtiene una regla por su ID."""
+        """Get a Rule by ID.
+
+        Args:
+            rule_id: Rule identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `RuleResponseDTO`.
+        """
         try:
             response = await self._get(f"/rules/{rule_id}", model=DTOS.RuleResponseDTO, headers=headers)
-            return Ok(response)
+            return response
         except Exception as e:
             return Err(e)    
 
     async def update_rule(self, rule_id: str, rule: DTOS.RuleCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
-        """Actualiza los atributos de una regla existente."""
+        """Update a Rule.
+
+        Args:
+            rule_id: Rule identifier.
+            rule: DTO with new `target`/`parameters`.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `MessageWithIDDTO` (backend message).
+        """
         try:
             payload = json.loads(rule.model_dump_json(by_alias=True))
             response = await self._put(f"/rules/{rule_id}", payload, model=DTOS.MessageWithIDDTO, headers=headers)
@@ -285,7 +647,14 @@ class ShieldXClient:
             return Err(e)
 
     async def list_rules(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.RuleResponseDTO],Exception]:
-        """Lista todas las reglas existentes."""
+        """List all Rules.
+
+        Args:
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `RuleResponseDTO`.
+        """
         try:
             rules = await self._get("/rules", model=DTOS.RuleResponseDTO,headers=headers,is_list=True)
             return rules
@@ -293,63 +662,181 @@ class ShieldXClient:
             return Err(e)
 
     async def delete_rule(self, rule_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Elimina una regla por ID."""
+        """Delete a Rule by ID.
+
+        Args:
+            rule_id: Rule identifier.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the deletion succeeded.
+        """
         try:
             await self._delete(f"/rules/{rule_id}", headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
-        
 
     # --- CRUD: Trigger (por nombre) ---
+        
+    async def find_trigger_by_name_dict(self, name: str) -> dict | None:
+        """Find a Trigger by name.
+
+        Args:
+            name: Trigger name.
+
+        Returns:
+            Dict `{"id": str, "name": str}` if found; `None` on 404.
+        """
+        res = await self.get_trigger_by_name(name)
+        if res.is_ok:
+            dto = res.unwrap()
+            return {"id": dto.trigger_id, "name": dto.name}
+        return None  # si backend responde 404, get_trigger_by_name devolverá Err; aquí devolvemos None
+
+
+    async def create_trigger_dict(self, name: str) -> dict:
+        """Create a Trigger and return a small dict.
+
+        Args:
+            name: Trigger name.
+
+        Returns:
+            Dict `{"id": str, "name": str}`.
+        """
+        res = await self.create_trigger(DTOS.TriggerCreateDTO(name=name))
+        if res.is_ok:
+            msg = res.unwrap()  # MessageWithIDDTO
+            return {"id": msg.id, "name": name}
+        raise res.unwrap_err()
 
     async def create_trigger(self,  trigger: DTOS.TriggerCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
-        """Crea un nuevo trigger."""
+        """Create a new Trigger.
+
+        Args:
+            trigger: DTO with name (and optionally nested rule per your backend).
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `MessageWithIDDTO` (created id).
+        """
         try:
             payload = trigger.model_dump(by_alias=True)
             response = await self._post("/triggers/", payload, model=DTOS.MessageWithIDDTO, headers=headers)
-            return Ok(response)
+            return response
         except Exception as e:
             return Err(e)
 
     async def get_trigger_by_name(self, name: str, headers: Dict[str, str] = {}) -> Result[DTOS.TriggerResponseDTO, Exception]:
-        """Obtiene un trigger por su nombre."""
+        """Get a Trigger by name.
+
+        Args:
+            name: Trigger name.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `TriggerResponseDTO`.
+        """
         try:
             response = await self._get(f"/triggers/{name}", model=DTOS.TriggerResponseDTO, headers=headers)
-            return Ok(response)
+            return response
         except Exception as e:
             return Err(e)
 
     async def get_all_triggers(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.TriggerResponseDTO], Exception]:
-        """Lista todos los triggers registrados."""
+        """List all Triggers.
+
+        Args:
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `TriggerResponseDTO`.
+        """
         try:
             response = await self._get("/triggers/", model=DTOS.TriggerResponseDTO, headers=headers, is_list=True)
-            return Ok(response)
+            return response
         except Exception as e:
             return Err(e)
 
     async def update_trigger(self, name: str, updated_trigger: DTOS.TriggerCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
-        """Actualiza un trigger existente."""
+        """Update a Trigger by name.
+
+        Args:
+            name: Trigger name (path identifier).
+            updated_trigger: DTO with the new fields.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `MessageWithIDDTO`.
+        """
         try:
             payload = updated_trigger.model_dump(by_alias=True)
             response = await self._put(f"/triggers/{name}", payload, model=DTOS.MessageWithIDDTO, headers=headers)
-            return Ok(response)
+            return response
         except Exception as e:
             return Err(e)
 
     async def delete_trigger(self, name: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Elimina un trigger existente."""
+        """Delete a Trigger by name.
+
+        Args:
+            name: Trigger name.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the deletion succeeded.
+        """
         try:
             await self._delete(f"/triggers/{name}", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
 
-
     # --- Relaciones Trigger ⇄ Trigger (Encadenamiento) ---
 
+    async def is_trigger_linked_to_trigger_bool(self, parent_id: str, child_id: str) -> bool:
+        """Check whether a parent Trigger is linked to a child Trigger.
+
+        Args:
+            parent_id: Parent Trigger ID.
+            child_id: Child Trigger ID.
+
+        Returns:
+            True if the relation exists; otherwise False.
+        """
+        res = await self.list_trigger_children(parent_id)  # nombre correcto
+        if res.is_ok:
+            return any(link.trigger_child_id == child_id for link in res.unwrap())
+        raise res.unwrap_err()
+
+
+    async def bind_trigger_to_trigger_dict(self, parent_id: str, child_id: str) -> dict:
+        """Bind a child Trigger to a parent Trigger.
+
+        Args:
+            parent_id: Parent Trigger ID.
+            child_id: Child Trigger ID.
+
+        Returns:
+            Dict `{"trigger_parent_id": str, "trigger_child_id": str}`.
+        """
+        res = await self.link_trigger_child(parent_id, child_id)  # nombre correcto
+        if res.is_ok:
+            return {"trigger_parent_id": parent_id, "trigger_child_id": child_id}
+        raise res.unwrap_err()
+
+
     async def link_trigger_child(self, parent_id: str, child_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Asocia un trigger hijo a un trigger padre."""
+        """Create the Parent⇄Child Trigger relation.
+
+        Args:
+            parent_id: Parent Trigger ID.
+            child_id: Child Trigger ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the link was created.
+        """
         try:
             
             await self._post(f"/triggers/{parent_id}/children/{child_id}", payload={}, model=None, headers=headers)
@@ -357,28 +844,50 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-
     async def list_trigger_children(self, parent_id: str, headers: Dict[str, str] = {}) -> Result[List[DTOS.TriggersTriggersDTO], Exception]:
-        """Lista los triggers hijos de un trigger padre."""
+        """List all children for a parent Trigger.
+
+        Args:
+            parent_id: Parent Trigger ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `TriggersTriggersDTO`.
+        """
         try:
             response = await self._get(
                 f"/triggers/{parent_id}/children",model=DTOS.TriggersTriggersDTO, headers=headers,is_list=True)
             return response
         except Exception as e:
             return Err(e)
-        
 
     async def list_trigger_parents(self, child_id: str, headers: Dict[str, str] = {}) -> Result[List[DTOS.TriggersTriggersDTO], Exception]:
-        """Lista los triggers padres de un trigger hijo."""
+        """List all parents for a child Trigger.
+
+        Args:
+            child_id: Child Trigger ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with a list of `TriggersTriggersDTO`.
+        """
         try:
             response = await self._get(f"/triggers/{child_id}/parents",model=DTOS.TriggersTriggersDTO,headers=headers,is_list=True)
             return response
         except Exception as e:
             return Err(e)
 
-
     async def unlink_trigger_child(self, parent_id: str, child_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """Elimina la relación padre-hijo entre triggers."""
+        """Remove the Parent⇄Child Trigger relation.
+
+        Args:
+            parent_id: Parent Trigger ID.
+            child_id: Child Trigger ID.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the unlink succeeded.
+        """
         try:
             await self._delete(f"/triggers/{parent_id}/children/{child_id}", headers)
             return Ok(True)
@@ -386,47 +895,17 @@ class ShieldXClient:
             return Err(e)
 
 
-    async def list_trigger_parents(
-        self,
-        child_id: str,
-        headers: Dict[str, str] = {}
-    ) -> Result[List[DTOS.TriggersTriggersDTO], Exception]:
-        """Lista los triggers padres de un trigger hijo."""
-        try:
-            response = await self._get(
-                f"/triggers/{child_id}/parents",
-                model=List[DTOS.TriggersTriggersDTO],
-                headers=headers,
-                is_list=True
-            )
-            return Ok(response)
-        except Exception as e:
-            return Err(e)
-
-
-    # --- Métodos internos genéricos con logging detallado ---
-
-    #async def _post(self, path: str, payload: Dict[str, Any], headers: Dict[str, str] = {}):
-#
-    #    url = f"{self.base_url}{path}"
-    #    full_headers = {**self.headers, **headers}
-    #    start = time.time()
-#
-    #    async with httpx.AsyncClient(headers=full_headers) as client:
-    #        response = await client.post(url, json=payload)
-    #        elapsed = time.time() - start
-    #        logger.info(f"POST {path} - {response.status_code} - {elapsed:.3f}s")
-    #        response.raise_for_status()
-#
-    #        if response.status_code == 204 or not response.content:
-    #            return {}
-    #        return response.json()
-        
     async def _post(self, path: str, payload: Dict[str, Any],model:Type[R], headers: Dict[str, str] = {})->Result[R, Exception]:
-        """
-        Método interno para enviar solicitudes POST.
-        Combina cabeceras, mide el tiempo y maneja errores.
-        Devuelve JSON si hay contenido, o {} en caso de 204.
+        """POST helper that validates the JSON response with a Pydantic model.
+
+        Args:
+            path: Relative path (joined with `base_url`).
+            payload: Request JSON body.
+            model: Pydantic model used to parse the response.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with an instance of `model`.
         """
         try:
             url = f"{self.base_url}{path}"
@@ -452,27 +931,17 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-
-    #async def _get(self, path: str, headers: Dict[str, str] = {}):
-    #    """
-    #    Método interno para solicitudes GET.
-    #    Devuelve JSON de la respuesta. Mide tiempo y registra logs.
-    #    """
-    #    url = f"{self.base_url}{path}"
-    #    full_headers = {**self.headers, **headers}
-    #    start = time.time()
-#
-    #    async with httpx.AsyncClient(headers=full_headers) as client:
-    #        response = await client.get(url)
-    #        elapsed = time.time() - start
-    #        logger.info(f"GET {path} - {response.status_code} - {elapsed:.3f}s")
-    #        response.raise_for_status()
-    #        return response.json()
-
     async def _get(self, path: str,model:Type[R], headers: Dict[str, str] = {},is_list:bool =False)->Result[R| List[R], Exception]:
-        """
-        Método interno para solicitudes GET.
-        Devuelve JSON de la respuesta. Mide tiempo y registra logs.
+        """GET helper that validates the JSON response with a Pydantic model.
+
+        Args:
+            path: Relative path.
+            model: Expected Pydantic model.
+            headers: Optional extra headers.
+            is_list: When True, parse the response as a list of `model`.
+
+        Returns:
+            Result with `model` or `List[model]`.
         """
         url = f"{self.base_url}{path}"
         full_headers = {**self.headers, **headers}
@@ -493,32 +962,19 @@ class ShieldXClient:
         if is_list:
             parsed = [model.model_validate(item) for item in raw]
             return Ok(parsed)
-        return model.model_validate(raw)
+        return Ok(model.model_validate(raw))
 
-    #async def _put(self, path: str, payload: Any, headers: Dict[str, str] = {}):
-    #    """
-    #    Método interno para PUT (actualizaciones).
-    #    Devuelve True si no hay cuerpo (204), JSON en caso contrario.
-    #    """
-    #    url = f"{self.base_url}{path}"
-    #    full_headers = {**self.headers, **headers}
-    #    start = time.time()
-#
-    #    async with httpx.AsyncClient(headers=full_headers) as client:
-    #        response = await client.put(url, json=payload)
-    #        elapsed = time.time() - start
-    #        logger.info(f"PUT {path} - {response.status_code} - {elapsed:.3f}s")
-    #        response.raise_for_status()
-#
-    #        if response.status_code == 204 or not response.content:
-    #            return True
-    #        return response.json()
-        
     async def _put(self, path: str, payload: Any, model: Type[R], headers: Dict[str, str] = {}) -> Result[R , Exception]:
-        """
-        Método interno para PUT (actualizaciones).
-        Si `model` es proporcionado, parsea la respuesta al modelo.
-        Si no hay contenido o status 204, retorna `Ok(True)`.
+        """PUT helper with Pydantic validation.
+
+        Args:
+            path: Relative path.
+            payload: Request JSON body.
+            model: Expected Pydantic model (when None, returns raw JSON).
+            headers: Optional extra headers.
+
+        Returns:
+            Result with an instance of `model` (or raw JSON if `model` is None).
         """
         try:
             url = f"{self.base_url}{path}"
@@ -546,34 +1002,15 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-    #async def _delete(self, path: str, headers: Dict[str, str] = {}):
-    #    """
-    #    Método interno para DELETE.
-    #    Devuelve True si no hay cuerpo, o JSON si lo hay.
-    #    """
-    #    url = f"{self.base_url}{path}"
-    #    full_headers = {**self.headers, **headers}
-    #    start = time.time()
-#
-    #    async with httpx.AsyncClient(headers=full_headers) as client:
-    #        response = await client.delete(url)
-    #        elapsed = time.time() - start
-    #        logger.info(f"DELETE {path} - {response.status_code} - {elapsed:.3f}s")
-    #        response.raise_for_status()
-#
-    #        if response.status_code == 204 or not response.content:
-    #            return True
-    #        return response.json()
-    #    
-    #        # --- Métodos internos genéricos con logging detallado ---
-
-
-
-
     async def _delete(self, path: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
-        """
-        Método interno para DELETE.
-        Retorna `Ok(True)` si se elimina exitosamente.
+        """DELETE helper with basic logging.
+
+        Args:
+            path: Relative path.
+            headers: Optional extra headers.
+
+        Returns:
+            Result with `True` if the deletion succeeded.
         """
         try:
             url = f"{self.base_url}{path}"
