@@ -127,7 +127,7 @@ async def test_get_event_by_id():
     assert get_result.is_ok
 
     fetched_event = get_result.unwrap()
-    assert fetched_event.Event_id == event_id
+    assert fetched_event.event_id == event_id
     assert fetched_event.service_id == "s1"
     assert fetched_event.payload == {"key": "value"}
 
@@ -393,7 +393,7 @@ async def test_link_trigger_to_event_type():
 
     # Parche temporal si hay doble Ok
     event_type_dto = event_type_result.unwrap()
-    trigger_dto = trigger_result.unwrap().unwrap()
+    trigger_dto = trigger_result.unwrap()
 
     assert isinstance(event_type_dto, MessageWithIDDTO)
     assert isinstance(trigger_dto, MessageWithIDDTO)
@@ -438,7 +438,7 @@ async def test_link_rule_to_trigger():
 
     # Parche temporal si hay doble Ok
     rule_dto = rule_result.unwrap()
-    trigger_dto = trigger_result.unwrap().unwrap()
+    trigger_dto = trigger_result.unwrap()
 
     assert isinstance(rule_dto, MessageWithIDDTO)
     assert isinstance(trigger_dto, MessageWithIDDTO)
@@ -476,8 +476,8 @@ async def test_link_and_unlink_triggers():
     assert child_result.is_ok
 
     # Parche temporal si hay doble Ok
-    parent_dto = parent_result.unwrap().unwrap()
-    child_dto = child_result.unwrap().unwrap()
+    parent_dto = parent_result.unwrap()
+    child_dto = child_result.unwrap()
 
     assert isinstance(parent_dto, MessageWithIDDTO)
     assert isinstance(child_dto, MessageWithIDDTO)
