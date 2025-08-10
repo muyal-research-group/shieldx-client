@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 from shieldx_client import ShieldXClient
 
+
 @pytest.mark.asyncio
 async def test_interpret_choreography_real_yaml():
     """
