@@ -16,8 +16,10 @@ async def test_interpret_choreography_real_yaml():
 
     result = await client.interpret_async(str(yaml_path))
 
+    assert result.is_ok, f"interpret_async() falló: {result.unwrap_err()}"
     # Verificaciones básicas
-    assert "event_types" in result
-    assert "triggers" in result
-    assert "rules" in result
-    assert isinstance(result["links_count"], int)
+    data = result.unwrap()
+    assert "event_types" in data
+    assert "triggers" in data
+    assert "rules" in data
+    assert isinstance(data["links_count"], int)
