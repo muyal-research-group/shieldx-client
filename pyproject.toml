@@ -32,4 +32,5 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.group.dev.dependencies]
 pytest-asyncio = "^0.26.0"
 pytest = "^8.3.5"
+coverage = "^7.10.2"
 
