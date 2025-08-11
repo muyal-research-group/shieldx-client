@@ -35,7 +35,18 @@ jobs:
 
       - name: Install Dependencies
         run: poetry install --no-interaction --no-root
-
+      
+      - name: Start ShieldX backend
+        run: |
+          docker compose --env-file .env.ci -f docker-compose.yaml up -d
+          echo "Esperando que el backend esté listo..."
+          for i in {1..20}; do
+            if curl -s http://localhost:20000/docs > /dev/null; then
+              echo "✅ Backend listo"
+              break
+            fi
+            sleep 3
+          done
 
       - name: Lint with Ruff  
         run: |  
