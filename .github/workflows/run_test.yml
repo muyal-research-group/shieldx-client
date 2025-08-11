@@ -38,7 +38,7 @@ jobs:
       
       - name: Start ShieldX backend
         run: |
-          docker compose --env-file .env.ci -f docker-compose.yaml up -d
+          docker compose --env-file .env.ci -f docker-compose.yml up -d
           echo "Esperando que el backend esté listo..."
           for i in {1..20}; do
             if curl -s http://localhost:20000/docs > /dev/null; then
@@ -47,7 +47,7 @@ jobs:
             fi
             sleep 3
           done
-
+        
       - name: Lint with Ruff  
         run: |  
           pip install ruff  
