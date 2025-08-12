@@ -1,0 +1,92 @@
+triggers:
+  - name: "LiuEncryption"
+    rule:
+      target: "s_security.cipher_ops.encrypt_data"
+      parameters:
+        source_bucket_id:
+          type: "string"
+          description: "Cubeta donde se encuentran los datos de entrada"
+        source_key:
+          type: "string"
+          description: "Identificador de los datos de entrada"
+
+        sink_bucket_id:
+          type: "string"
+          description: "Cubeta donde se escribe el modelo"     
+        sink_key:
+          type: "string"
+          description: "Identificador del modelo"
+        security_level: 
+          type: "int"
+          description: "Nivel de seguridad"
+          
+
+  - name: "Skmeans"
+    rule:
+      target: "s_ml.ml_clustering.skmean"
+      parameters:
+        source_bucket_id:
+          type: "string"
+          description: "Cubeta donde se encuentran los datos de entrada"
+        source_key:
+          type: "string"
+          description: "Identificador de los datos de entrada"
+        k:
+          type: "int"
+          description: "Número de clusters a generar"
+
+  - name: "LiuDecryption"
+    rule:
+      target: "s_security.cipher_ops.decrypt_data"
+      parameters:
+        source_bucket_id:
+          type: "string"
+          description: "Cubeta donde se encuentran los datos de entrada"
+        source_key:
+          type: "string"
+          description: "Identificador de los datos de entrada"
+
+  - name: "ClusterPlotting"
+    rule:
+      target: "s_ml.ml_clustering.plotting"
+      parameters:
+        source_bucket_id:
+          type: "string"
+          description: "Cubeta donde se encuentran los datos de entrada"
+        source_key:
+          type: "string"
+          description: "Identificador de los datos de entrada"
+
+  # Trigger para el lanzamiento de funciones de almacenamiento
+  - name: "Put"
+    rule:
+      target: "mictlanx.put"
+      parameters:
+        bucket_id:
+          type: "string"
+          description: "Cubeta donde se encuentran los datos"
+        key:
+          type: "string"
+          description: "Identificador de los datos"
+        source_path:
+          type: "string"
+          description: "Ruta donde se encuentran los datos"
+        replication_factor:
+          type: "int"
+          description: "Numero de copias"
+        num_chunks:
+          type: "int"
+          description: "Numero de segmentos"
+  - name: "Get"
+    rule:
+      target: "mictlanx.get"
+      parameters:
+        bucket_id:
+          type: "string"
+          description: "Cubeta donde se encuentran los datos"
+        key:
+          type: "string"
+          description: "Identificador de los datos"
+        sink_path:
+          type: "string"
+          description: "Ruta donde se escriben los datos"
