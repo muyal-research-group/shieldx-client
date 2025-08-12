@@ -61,7 +61,7 @@ class ChoreographyInterpreter:
             spec =  ChoreographySpec.model_validate(raw)
             return Ok(spec)
         except ValidationError as ve:
-            return Err(ValueError(f"Coreografía inválida: {ve}"))
+            return Err(ValueError(f"Invalid choreography: {ve}"))
         except Exception as e:
             return Err(e)
 
@@ -225,7 +225,7 @@ class ChoreographyInterpreter:
             params: Dict[str, Dict[str, Any]] = {}
             for pname, pspec in (trig.rule.parameters or {}).items():
                 if pspec.type not in allowed_types:
-                    return Err(ValueError(f"Tipo no válido para parámetro '{pname}': '{pspec.type}'"))
+                    return Err(ValueError(f"Invalid parameter type '{pname}': '{pspec.type}'"))
                 params[pname] = {"type": pspec.type, "description": pspec.description or ""}
 
             created_res = await self.client.create_rule_dict(target, params)

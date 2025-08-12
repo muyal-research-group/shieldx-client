@@ -109,7 +109,7 @@ class ShieldXClient:
             else:
                 p = Path(choreography_path_or_text)
                 if not p.exists():
-                    raise FileNotFoundError(f"No se encontró el archivo: {p}")
+                    raise FileNotFoundError(f"File not found: {p}")
                 yaml_text = p.read_text(encoding="utf-8")
             interpreter = ChoreographyInterpreter(self)
             return await interpreter.index_from_text(yaml_text)
