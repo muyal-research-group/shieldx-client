@@ -49,7 +49,7 @@ class ShieldXClient:
             self.headers["Authorization"] = f"Bearer {token}"
 
 
-    def interpret(self, choreography_path_or_text: str, *, as_text: bool = False) -> Dict[str, Any]:
+    def interpret(self, choreography_path_or_text: str, *, as_text: bool = False) -> Result[Dict[str, Any], Exception]:
         """Interpret a choreography YAML and index entities (blocking).
 
         Internally uses `ChoreographyInterpreter`. Prefer `interpret_async` in async code.
@@ -72,26 +72,28 @@ class ShieldXClient:
             RuntimeError: If an event loop is already running (use `interpret_async` instead).
             ValueError: If the YAML does not match the schema.
         """
-        async def _runner(yaml_text: str) -> Dict[str, Any]:
+        async def _runner(yaml_text: str) -> Result[Dict[str, Any], Exception]:
             interpreter = ChoreographyInterpreter(self)
             return await interpreter.index_from_text(yaml_text)
-
-        if as_text:
-            yaml_text = choreography_path_or_text
-        else:
-            p = Path(choreography_path_or_text)
-            if not p.exists():
-                raise FileNotFoundError(f"No se encontró el archivo: {p}")
-            yaml_text = p.read_text(encoding="utf-8")
-
         try:
+            if as_text:
+                yaml_text = choreography_path_or_text
+            else:
+                p = Path(choreography_path_or_text)
+                if not p.exists():
+                    raise FileNotFoundError(f"No se encontró el archivo: {p}")
+                yaml_text = p.read_text(encoding="utf-8")
+
             return asyncio.run(_runner(yaml_text))
         except RuntimeError as re:
-            raise RuntimeError(
-                "Ya hay un event loop ejecutándose. Use interpret_async(...)."
-            ) from re
+            # ya hay loop → pedir interpret_async
+            return Err(RuntimeError("Ya hay un event loop ejecutándose. Use interpret_async(...)."))
+        except Exception as e:
+            return Err(e)
 
-    async def interpret_async(self, choreography_path_or_text: str, *, as_text: bool = False) -> Dict[str, Any]:
+    
+
+    async def interpret_async(self, choreography_path_or_text: str, *, as_text: bool = False) -> Result[Dict[str, Any], Exception]:
         """Interpret a choreography YAML and index entities (async).
 
         Args:
@@ -101,16 +103,18 @@ class ShieldXClient:
         Returns:
             Same structure as `interpret`.
         """
-        if as_text:
-            yaml_text = choreography_path_or_text
-        else:
-            p = Path(choreography_path_or_text)
-            if not p.exists():
-                raise FileNotFoundError(f"No se encontró el archivo: {p}")
-            yaml_text = p.read_text(encoding="utf-8")
-        interpreter = ChoreographyInterpreter(self)
-        return await interpreter.index_from_text(yaml_text)
-    
+        try:
+            if as_text:
+                yaml_text = choreography_path_or_text
+            else:
+                p = Path(choreography_path_or_text)
+                if not p.exists():
+                    raise FileNotFoundError(f"No se encontró el archivo: {p}")
+                yaml_text = p.read_text(encoding="utf-8")
+            interpreter = ChoreographyInterpreter(self)
+            return await interpreter.index_from_text(yaml_text)
+        except Exception as e:
+            return Err(e)
 
 # --- Events ---
     async def create_event(self, event: DTOS.EventCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
@@ -268,7 +272,7 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-    async def find_event_type_by_name_dict(self, event_type: str) -> dict | None:
+    async def find_event_type_by_name_dict(self, event_type: str) -> Result[Optional[dict], Exception]:
         """Find an Event Type by name.
 
         Args:
@@ -277,16 +281,17 @@ class ShieldXClient:
         Returns:
             Dict `{"id": str, "event_type": str}` if found, otherwise `None`.
         """
-        res = await self.list_event_types()
-        if res.is_ok:
-            for dto in res.unwrap():
-                if dto.event_type == event_type:
-                    return {"id": dto.event_type_id, "event_type": dto.event_type}
-            return None
-        raise res.unwrap_err()
+        try:
+            res = await self.list_event_types()
+            if res.is_ok:
+                for dto in res.unwrap():
+                    if dto.event_type == event_type:
+                        return Ok({"id": dto.event_type_id, "event_type": dto.event_type})
+                return Ok(None)
+        except Exception as e:
+            return Err(e)
 
-
-    async def create_event_type_dict(self, event_type_name: str) -> dict:
+    async def create_event_type_dict(self, event_type_name: str) -> Result[dict, Exception]:
         """Create an Event Type and return a simple dict.
 
         Args:
@@ -295,14 +300,16 @@ class ShieldXClient:
         Returns:
             Dict `{"id": str, "event_type": str}`.
         """
-        req = DTOS.EventTypeCreateDTO(event_type=event_type_name)
-        res = await self.create_event_type(req)
-        if res.is_ok:
+        try:
+            req = DTOS.EventTypeCreateDTO(event_type=event_type_name)
+            res = await self.create_event_type(req)
+            if res.is_err:
+                return Err(res.unwrap_err())
             msg = res.unwrap()  # MessageWithIDDTO
-            return {"id": msg.id, "event_type": event_type_name}
-        raise res.unwrap_err()
-
-
+            return Ok({"id": msg.id, "event_type": event_type_name})
+        except Exception as e:
+            return Err(e)
+        
 
     async def list_event_types(self, headers: Dict[str, str] = {}) -> Result[List[DTOS.EventTypeResponseDTO],Exception]:
         """List all Event Types.
@@ -356,7 +363,7 @@ class ShieldXClient:
             return Err(e)
     # --- Relaciones EventType ⇄ Trigger ---
 
-    async def is_trigger_bound_to_event_type_bool(self, event_type_id: str, trigger_id: str) -> bool:
+    async def is_trigger_bound_to_event_type_bool(self, event_type_id: str, trigger_id: str) -> Result[bool, Exception]:
         """Check whether a Trigger is bound to an Event Type.
 
         Args:
@@ -366,13 +373,15 @@ class ShieldXClient:
         Returns:
             True if the relation exists; otherwise False.
         """
-        res = await self.list_triggers_for_event_type(event_type_id)
-        if res.is_ok:
-            return any(link.trigger_id == trigger_id for link in res.unwrap())
-        raise res.unwrap_err()
+        try:
+            res = await self.list_triggers_for_event_type(event_type_id)
+            if res.is_err:
+                return Err(res.unwrap_err())
+            return Ok(any(link.trigger_id == trigger_id for link in res.unwrap()))
+        except Exception as e:
+            return Err(e)
 
-
-    async def bind_event_type_to_trigger_dict(self, event_type_id: str, trigger_id: str) -> dict:
+    async def bind_event_type_to_trigger_dict(self, event_type_id: str, trigger_id: str)  -> Result[dict, Exception]:
         """Bind a Trigger to an Event Type.
 
         Args:
@@ -382,11 +391,13 @@ class ShieldXClient:
         Returns:
             Dict `{"event_type_id": str, "trigger_id": str}`.
         """
-        res = await self.link_trigger_to_event_type(event_type_id, trigger_id)
-        if res.is_ok:
-            return {"event_type_id": event_type_id, "trigger_id": trigger_id}
-        raise res.unwrap_err()
-
+        try:
+            res = await self.link_trigger_to_event_type(event_type_id, trigger_id)
+            if res.is_err:
+                return Err(res.unwrap_err())
+            return Ok({"event_type_id": event_type_id, "trigger_id": trigger_id})
+        except Exception as e:
+            return Err(e)
 
     async def link_trigger_to_event_type(self, event_type_id: str, trigger_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
         """Create the EventType⇄Trigger relation.
@@ -459,7 +470,7 @@ class ShieldXClient:
 
 # --- Relaciones Trigger ⇄ Rule ---
 
-    async def is_rule_bound_to_trigger_bool(self, trigger_id: str, rule_id: str) -> bool:
+    async def is_rule_bound_to_trigger_bool(self, trigger_id: str, rule_id: str) -> Result[bool, Exception]:
         """Check whether a Rule is bound to a Trigger.
 
         Args:
@@ -469,11 +480,13 @@ class ShieldXClient:
         Returns:
             True if the relation exists; otherwise False.
         """
-        res = await self.list_rules_for_trigger(trigger_id)
-        if res.is_ok:
-            return any(link.rule_id == rule_id for link in res.unwrap())
-        raise res.unwrap_err()
-
+        try:
+            res = await self.list_rules_for_trigger(trigger_id)
+            if res.is_err:
+                return Err(res.unwrap_err())
+            return Ok(any(link.rule_id == rule_id for link in res.unwrap()))
+        except Exception as e:
+            return Err(e)
 
     async def bind_rule_to_trigger_dict(self, trigger_id: str, rule_id: str) -> dict:
         """Bind a Rule to a Trigger.
@@ -485,10 +498,13 @@ class ShieldXClient:
         Returns:
             Dict `{"trigger_id": str, "rule_id": str}`.
         """
-        res = await self.link_rule_to_trigger(trigger_id, rule_id)
-        if res.is_ok:
-            return {"trigger_id": trigger_id, "rule_id": rule_id}
-        raise res.unwrap_err()
+        try:
+            res = await self.link_rule_to_trigger(trigger_id, rule_id)
+            if res.is_err:
+                return Err(res.unwrap_err())
+            return Ok({"trigger_id": trigger_id, "rule_id": rule_id})
+        except Exception as e:
+            return Err(e)
 
 
     async def link_rule_to_trigger(self, trigger_id: str, rule_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
@@ -560,7 +576,7 @@ class ShieldXClient:
 
 # --- CRUD Rule (helpers estilo dict) ---
 
-    async def find_rule_by_target_dict(self, target: str) -> dict | None:
+    async def find_rule_by_target_dict(self, target: str) -> Result[Optional[dict], Exception]:
         """Find a Rule by `target`.
 
         Args:
@@ -569,16 +585,18 @@ class ShieldXClient:
         Returns:
             Dict `{"id": str, "target": str}` if found, otherwise `None`.
         """
-        res = await self.list_rules()
-        if res.is_ok:
+        try:
+            res = await self.list_rules()
+            if res.is_err:
+                return Err(res.unwrap_err())
             for dto in res.unwrap():
                 if dto.target == target:
-                    return {"id": dto.rule_id, "target": dto.target}
-            return None
-        raise res.unwrap_err()
+                    return Ok({"id": dto.rule_id, "target": dto.target})
+            return Ok(None)
+        except Exception as e:
+            return Err(e)
 
-
-    async def create_rule_dict(self, target: str, parameters: dict) -> dict:
+    async def create_rule_dict(self, target: str, parameters: dict) -> Result[dict, Exception]:
         """Create a Rule and return a small dict.
 
         Args:
@@ -588,11 +606,14 @@ class ShieldXClient:
         Returns:
             Dict `{"id": str, "target": str}`.
         """
-        res = await self.create_rule(DTOS.RuleCreateDTO(target=target, parameters=parameters))
-        if res.is_ok:
-            msg = res.unwrap()  # MessageWithIDDTO
-            return {"id": msg.id, "target": target}
-        raise res.unwrap_err()
+        try:
+            res = await self.create_rule(DTOS.RuleCreateDTO(target=target, parameters=parameters))
+            if res.is_err:
+                return Err(res.unwrap_err())
+            msg = res.unwrap()
+            return Ok({"id": msg.id, "target": target})
+        except Exception as e:
+            return Err(e)
 
 
     async def create_rule(self, rule: DTOS.RuleCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
@@ -679,7 +700,7 @@ class ShieldXClient:
 
     # --- CRUD: Trigger (por nombre) ---
         
-    async def find_trigger_by_name_dict(self, name: str) -> dict | None:
+    async def find_trigger_by_name_dict(self, name: str) -> Result[Optional[dict], Exception]:
         """Find a Trigger by name.
 
         Args:
@@ -688,14 +709,20 @@ class ShieldXClient:
         Returns:
             Dict `{"id": str, "name": str}` if found; `None` on 404.
         """
-        res = await self.get_trigger_by_name(name)
-        if res.is_ok:
-            dto = res.unwrap()
-            return {"id": dto.trigger_id, "name": dto.name}
-        return None  # si backend responde 404, get_trigger_by_name devolverá Err; aquí devolvemos None
+        try:
+            res = await self.get_trigger_by_name(name)
+            if res.is_ok:
+                dto = res.unwrap()
+                return Ok({"id": dto.trigger_id, "name": dto.name})
+            # Si fue 404, tu _get ya convertiría en Err; aquí lo tratamos como None si es 404.
+            err = res.unwrap_err()
+            if isinstance(err, httpx.HTTPStatusError) and err.response.status_code == 404:
+                return Ok(None)
+            return Err(err)
+        except Exception as e:
+            return Err(e)
 
-
-    async def create_trigger_dict(self, name: str) -> dict:
+    async def create_trigger_dict(self, name: str) -> Result[dict, Exception]:
         """Create a Trigger and return a small dict.
 
         Args:
@@ -704,11 +731,14 @@ class ShieldXClient:
         Returns:
             Dict `{"id": str, "name": str}`.
         """
-        res = await self.create_trigger(DTOS.TriggerCreateDTO(name=name))
-        if res.is_ok:
-            msg = res.unwrap()  # MessageWithIDDTO
-            return {"id": msg.id, "name": name}
-        raise res.unwrap_err()
+        try:
+            res = await self.create_trigger(DTOS.TriggerCreateDTO(name=name))
+            if res.is_err:
+                return Err(res.unwrap_err())
+            msg = res.unwrap()
+            return Ok({"id": msg.id, "name": name})
+        except Exception as e:
+            return Err(e)
 
     async def create_trigger(self,  trigger: DTOS.TriggerCreateDTO, headers: Dict[str, str] = {}) -> Result[DTOS.MessageWithIDDTO, Exception]:
         """Create a new Trigger.
@@ -794,7 +824,7 @@ class ShieldXClient:
 
     # --- Relaciones Trigger ⇄ Trigger (Encadenamiento) ---
 
-    async def is_trigger_linked_to_trigger_bool(self, parent_id: str, child_id: str) -> bool:
+    async def is_trigger_linked_to_trigger_bool(self, parent_id: str, child_id: str) -> Result[bool, Exception]:
         """Check whether a parent Trigger is linked to a child Trigger.
 
         Args:
@@ -804,13 +834,15 @@ class ShieldXClient:
         Returns:
             True if the relation exists; otherwise False.
         """
-        res = await self.list_trigger_children(parent_id)  # nombre correcto
-        if res.is_ok:
-            return any(link.trigger_child_id == child_id for link in res.unwrap())
-        raise res.unwrap_err()
+        try:
+            res = await self.list_trigger_children(parent_id)
+            if res.is_err:
+                return Err(res.unwrap_err())
+            return Ok(any(link.trigger_child_id == child_id for link in res.unwrap()))
+        except Exception as e:
+            return Err(e)
 
-
-    async def bind_trigger_to_trigger_dict(self, parent_id: str, child_id: str) -> dict:
+    async def bind_trigger_to_trigger_dict(self, parent_id: str, child_id: str) -> Result[dict, Exception]:
         """Bind a child Trigger to a parent Trigger.
 
         Args:
@@ -820,10 +852,13 @@ class ShieldXClient:
         Returns:
             Dict `{"trigger_parent_id": str, "trigger_child_id": str}`.
         """
-        res = await self.link_trigger_child(parent_id, child_id)  # nombre correcto
-        if res.is_ok:
-            return {"trigger_parent_id": parent_id, "trigger_child_id": child_id}
-        raise res.unwrap_err()
+        try:
+            res = await self.link_trigger_child(parent_id, child_id)
+            if res.is_err:
+                return Err(res.unwrap_err())
+            return Ok({"trigger_parent_id": parent_id, "trigger_child_id": child_id})
+        except Exception as e:
+            return Err(e)
 
 
     async def link_trigger_child(self, parent_id: str, child_id: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
@@ -943,26 +978,29 @@ class ShieldXClient:
         Returns:
             Result with `model` or `List[model]`.
         """
-        url = f"{self.base_url}{path}"
-        full_headers = {**self.headers, **headers}
-        t1 = T.time()
+        try:
+            url = f"{self.base_url}{path}"
+            full_headers = {**self.headers, **headers}
+            t1 = T.time()
 
-        async with httpx.AsyncClient(headers=full_headers) as client:
-            response = await client.get(url)
+            async with httpx.AsyncClient(headers=full_headers) as client:
+                response = await client.get(url)
 
-        
-        L.info({"event": "CLIENT.GET.RESPONSE", 
-                "path": path, 
-                "status": response.status_code, 
-                "time": T.time() - t1
-                })
+            
+            L.info({"event": "CLIENT.GET.RESPONSE", 
+                    "path": path, 
+                    "status": response.status_code, 
+                    "time": T.time() - t1
+                    })
 
-        response.raise_for_status()
-        raw = response.json()
-        if is_list:
-            parsed = [model.model_validate(item) for item in raw]
-            return Ok(parsed)
-        return Ok(model.model_validate(raw))
+            response.raise_for_status()
+            raw = response.json()
+            if is_list:
+                parsed = [model.model_validate(item) for item in raw]
+                return Ok(parsed)
+            return Ok(model.model_validate(raw))
+        except Exception as e:
+            return Err(e)
 
     async def _put(self, path: str, payload: Any, model: Type[R], headers: Dict[str, str] = {}) -> Result[R , Exception]:
         """PUT helper with Pydantic validation.
