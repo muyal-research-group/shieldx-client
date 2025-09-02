@@ -129,7 +129,7 @@ class ShieldXClient:
         """
         try:
             payload = json.loads(event.model_dump_json(by_alias=True))
-            result = await self._post("/events", payload, model=DTOS.MessageWithIDDTO, headers=headers)
+            result = await self._post("/events", payload, model=DTOS.MessageWithIDDTO, operation="CREATE_EVENT", headers=headers)
             return result
         except Exception as e:
             return Err(e)
@@ -144,7 +144,7 @@ class ShieldXClient:
             Result with a list of `EventResponseDTO`.
         """
         try:
-            return await self._get("/events", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
+            return await self._get("/events", model=DTOS.EventResponseDTO, operation="GET_ALL_EVENTS", headers=headers, is_list=True)
         except Exception as e:
             return Err(e)
 
@@ -159,7 +159,7 @@ class ShieldXClient:
             Result with a list of `EventResponseDTO`.
         """
         try:
-            result = await self._get(f"/events?service_id={service_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
+            result = await self._get(f"/events?service_id={service_id}", model=DTOS.EventResponseDTO, operation="GET_EVENTS_BY_SERVICE", headers=headers, is_list=True)
             return result
         except Exception as e:
             return Err(e)
@@ -167,7 +167,7 @@ class ShieldXClient:
     async def get_events_by_service_path(self, service_id: str, headers: Dict[str, str] = {})  -> Result[List[DTOS.EventResponseDTO], Exception]:
         """Filtra eventos por ID de servicio (como path param)."""
         try:
-            result = await self._get(f"/events/service/{service_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
+            result = await self._get(f"/events/service/{service_id}", model=DTOS.EventResponseDTO, operation="GET_EVENTS_BY_SERVICE_PATH", headers=headers, is_list=True)
             return result
         except Exception as e:
             return Err(e)
@@ -183,7 +183,7 @@ class ShieldXClient:
             Result with a list of `EventResponseDTO`.
         """
         try:
-            result = await self._get(f"/events/microservice/{microservice_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
+            result = await self._get(f"/events/microservice/{microservice_id}", model=DTOS.EventResponseDTO, operation="GET_EVENTS_BY_MICROSERVICE", headers=headers, is_list=True)
             return result
         except Exception as e:
             return Err(e)
@@ -199,7 +199,7 @@ class ShieldXClient:
             Result with a list of `EventResponseDTO`.
         """
         try:
-            result = await self._get(f"/events/function/{function_id}", model=DTOS.EventResponseDTO, headers=headers, is_list=True)
+            result = await self._get(f"/events/function/{function_id}", model=DTOS.EventResponseDTO, operation="GET_EVENTS_BY_FUNCTION", headers=headers, is_list=True)
             return result
         except Exception as e:
             return Err(e)
@@ -215,7 +215,7 @@ class ShieldXClient:
             Result with `EventResponseDTO`.
         """
         try:
-            result = await self._get(f"/events/{event_id}", model=DTOS.EventResponseDTO, headers=headers)
+            result = await self._get(f"/events/{event_id}", model=DTOS.EventResponseDTO,operation="GET_EVENT_BY_ID", headers=headers)
             return result
         except Exception as e:
             return Err(e)
@@ -232,7 +232,8 @@ class ShieldXClient:
             Result with the updated `EventResponseDTO`.
         """
         try:
-            result = await self._put(f"/events/{event_id}", data, model=DTOS.EventResponseDTO, headers=headers)
+            payload = json.loads(data.model_dump_json(by_alias=True, exclude_none=True))
+            result = await self._put(f"/events/{event_id}", payload, model=DTOS.EventResponseDTO, operation="UPDATE_EVENT", headers=headers)
             return result
         except Exception as e:
             return Err(e)
@@ -248,7 +249,7 @@ class ShieldXClient:
             Result with `True` if the deletion succeeded.
         """
         try:
-            await self._delete(f"/events/{event_id}", headers)
+            await self._delete(f"/events/{event_id}",operation="DELETE_EVENT", headers= headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -267,7 +268,7 @@ class ShieldXClient:
         """
         try:
             payload = event_type.model_dump()
-            result = await self._post(f"/event-types", payload=payload,model=DTOS.MessageWithIDDTO, headers=headers)
+            result = await self._post(f"/event-types", payload=payload,model=DTOS.MessageWithIDDTO, operation="CREATE_EVENT_TYPE", headers=headers)
             return result
         except Exception as e:
             return Err(e)
@@ -321,7 +322,7 @@ class ShieldXClient:
             Result with a list of `EventTypeResponseDTO`.
         """
         try:
-            data = await self._get(path = "/event-types", model=DTOS.EventTypeResponseDTO,headers=headers,is_list=True)
+            data = await self._get(path = "/event-types", model=DTOS.EventTypeResponseDTO, operation="LIST_EVENT_TYPES", headers=headers,is_list=True)
             return data
             # return [EventTypeModel(**et) for et in data]
         except Exception as e:
@@ -341,7 +342,7 @@ class ShieldXClient:
         #return EventTypeModel(**data)
 
         try:
-            result = await self._get(f"/event-types/{event_type_id}", model=DTOS.EventTypeResponseDTO, headers=headers)
+            result = await self._get(f"/event-types/{event_type_id}", model=DTOS.EventTypeResponseDTO, operation="GET_EVENT_TYPE_BY_ID", headers=headers)
             return result
         except Exception as e:
             return Err(e)
@@ -357,7 +358,7 @@ class ShieldXClient:
             Result with `True` if the deletion succeeded.
         """
         try:
-            await self._delete(f"/event-types/{event_type_id}", headers)
+            await self._delete(f"/event-types/{event_type_id}",operation="DELETE_EVENT_TYPE", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -411,7 +412,7 @@ class ShieldXClient:
             Result with `True` if the link was created.
         """
         try:
-            await self._post(f"/event-types/{event_type_id}/triggers/{trigger_id}", payload={}, model=None, headers=headers)
+            await self._post(f"/event-types/{event_type_id}/triggers/{trigger_id}", payload={}, model=None,operation="LINK_TRIGGER_TO_EVENT_TYPE", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -427,7 +428,7 @@ class ShieldXClient:
             Result with a list of `EventsTriggersDTO`.
         """
         try:
-            return await self._get(f"/event-types/{event_type_id}/triggers",model=DTOS.EventsTriggersDTO, headers=headers,is_list=True)
+            return await self._get(f"/event-types/{event_type_id}/triggers",model=DTOS.EventsTriggersDTO,operation="LIST_TRIGGERS_FOR_EVENT_TYPE", headers=headers,is_list=True)
         except Exception as e:
             return Err(e)    
 
@@ -443,7 +444,7 @@ class ShieldXClient:
             Result with `True` if the replacement succeeded.
         """
         try:
-            await self._put(f"/event-types/{event_type_id}/triggers", payload=trigger_ids, model=None, headers=headers)
+            await self._put(f"/event-types/{event_type_id}/triggers", payload=trigger_ids, model=None, operation="REPLACE_TRIGGERS_FOR_EVENT_TYPE", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -460,7 +461,7 @@ class ShieldXClient:
             Result with `True` if the unlink succeeded.
         """
         try:
-            await self._delete(f"/event-types/{event_type_id}/triggers/{trigger_id}", headers)
+            await self._delete(f"/event-types/{event_type_id}/triggers/{trigger_id}", operation="UNLINK_TRIGGER_FROM_EVENT_TYPE", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -519,7 +520,7 @@ class ShieldXClient:
             Result with `True` if the link was created.
         """
         try:
-            await self._post(f"/triggers/{trigger_id}/rules/{rule_id}", payload={}, model=None, headers=headers)
+            await self._post(f"/triggers/{trigger_id}/rules/{rule_id}", payload={}, model=None,operation="LINK_RULE_TO_TRIGGER", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -535,7 +536,7 @@ class ShieldXClient:
             Result with a list of `RulesTriggerDTO`.
         """
         try:
-            return await self._get(f"/triggers/{trigger_id}/rules",model=DTOS.RulesTriggerDTO, headers=headers,is_list=True)
+            return await self._get(f"/triggers/{trigger_id}/rules",model=DTOS.RulesTriggerDTO,operation="LIST_RULES_FOR_TRIGGER", headers=headers,is_list=True)
         except Exception as e:
             return Err(e)    
 
@@ -552,7 +553,7 @@ class ShieldXClient:
         """
         try:
             payload = json.loads(rule_payload.model_dump_json(by_alias=True))
-            result = await self._post(f"/triggers/{trigger_id}/rules", payload, model=DTOS.MessageWithIDDTO, headers=headers) 
+            result = await self._post(f"/triggers/{trigger_id}/rules", payload, model=DTOS.MessageWithIDDTO,operation="CREATE_RULE_AND_LINK_RULE", headers=headers) 
             return result
         except Exception as e:
             return Err(e)
@@ -569,7 +570,7 @@ class ShieldXClient:
             Result with `True` if the unlink succeeded.
         """
         try:
-            await self._delete(f"/triggers/{trigger_id}/rules/{rule_id}", headers)
+            await self._delete(f"/triggers/{trigger_id}/rules/{rule_id}",operation="UNLINK_RULE_FROM_TRIGGER",  headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -628,7 +629,7 @@ class ShieldXClient:
         """
         try:
             payload = json.loads(rule.model_dump_json(by_alias=True))
-            response = await self._post("/rules", payload, model=DTOS.MessageWithIDDTO, headers=headers)
+            response = await self._post("/rules", payload, model=DTOS.MessageWithIDDTO,operation="CREATE_RULE", headers=headers)
             return response
         except Exception as e:
             return Err(e)
@@ -644,7 +645,7 @@ class ShieldXClient:
             Result with `RuleResponseDTO`.
         """
         try:
-            response = await self._get(f"/rules/{rule_id}", model=DTOS.RuleResponseDTO, headers=headers)
+            response = await self._get(f"/rules/{rule_id}", model=DTOS.RuleResponseDTO,operation="GET_RULE_BY_ID", headers=headers)
             return response
         except Exception as e:
             return Err(e)    
@@ -662,7 +663,7 @@ class ShieldXClient:
         """
         try:
             payload = json.loads(rule.model_dump_json(by_alias=True))
-            response = await self._put(f"/rules/{rule_id}", payload, model=DTOS.MessageWithIDDTO, headers=headers)
+            response = await self._put(f"/rules/{rule_id}", payload, model=DTOS.MessageWithIDDTO, operation="UPDATE_RULE", headers=headers)
             return response
         except Exception as e:
             return Err(e)
@@ -677,7 +678,7 @@ class ShieldXClient:
             Result with a list of `RuleResponseDTO`.
         """
         try:
-            rules = await self._get("/rules", model=DTOS.RuleResponseDTO,headers=headers,is_list=True)
+            rules = await self._get("/rules", model=DTOS.RuleResponseDTO, operation="LIST_RULES", headers=headers,is_list=True)
             return rules
         except Exception as e:
             return Err(e)
@@ -693,7 +694,7 @@ class ShieldXClient:
             Result with `True` if the deletion succeeded.
         """
         try:
-            await self._delete(f"/rules/{rule_id}", headers)
+            await self._delete(f"/rules/{rule_id}", operation="DELETE_RULE", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -752,7 +753,7 @@ class ShieldXClient:
         """
         try:
             payload = trigger.model_dump(by_alias=True)
-            response = await self._post("/triggers/", payload, model=DTOS.MessageWithIDDTO, headers=headers)
+            response = await self._post("/triggers/", payload, model=DTOS.MessageWithIDDTO, operation="CREATE_TRIGGER", headers=headers)
             return response
         except Exception as e:
             return Err(e)
@@ -768,7 +769,7 @@ class ShieldXClient:
             Result with `TriggerResponseDTO`.
         """
         try:
-            response = await self._get(f"/triggers/{name}", model=DTOS.TriggerResponseDTO, headers=headers)
+            response = await self._get(f"/triggers/{name}", model=DTOS.TriggerResponseDTO, operation="GET_TRIGGER_BY_NAME", headers=headers)
             return response
         except Exception as e:
             return Err(e)
@@ -783,7 +784,7 @@ class ShieldXClient:
             Result with a list of `TriggerResponseDTO`.
         """
         try:
-            response = await self._get("/triggers/", model=DTOS.TriggerResponseDTO, headers=headers, is_list=True)
+            response = await self._get("/triggers/", model=DTOS.TriggerResponseDTO, operation="LIST_TRIGGERS", headers=headers, is_list=True)
             return response
         except Exception as e:
             return Err(e)
@@ -801,7 +802,7 @@ class ShieldXClient:
         """
         try:
             payload = updated_trigger.model_dump(by_alias=True)
-            response = await self._put(f"/triggers/{name}", payload, model=DTOS.MessageWithIDDTO, headers=headers)
+            response = await self._put(f"/triggers/{name}", payload, model=DTOS.MessageWithIDDTO, operation="UPDATE_TRIGGER", headers=headers)
             return response
         except Exception as e:
             return Err(e)
@@ -817,7 +818,7 @@ class ShieldXClient:
             Result with `True` if the deletion succeeded.
         """
         try:
-            await self._delete(f"/triggers/{name}", headers=headers)
+            await self._delete(f"/triggers/{name}", operation="DELETE_TRIGGER", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -874,7 +875,7 @@ class ShieldXClient:
         """
         try:
             
-            await self._post(f"/triggers/{parent_id}/children/{child_id}", payload={}, model=None, headers=headers)
+            await self._post(f"/triggers/{parent_id}/children/{child_id}", payload={}, model=None, operation="LINK_TRIGGER_CHILD", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
@@ -891,7 +892,7 @@ class ShieldXClient:
         """
         try:
             response = await self._get(
-                f"/triggers/{parent_id}/children",model=DTOS.TriggersTriggersDTO, headers=headers,is_list=True)
+                f"/triggers/{parent_id}/children",model=DTOS.TriggersTriggersDTO, operation="LIST_TRIGGER_CHILDREN", headers=headers,is_list=True)
             return response
         except Exception as e:
             return Err(e)
@@ -907,7 +908,7 @@ class ShieldXClient:
             Result with a list of `TriggersTriggersDTO`.
         """
         try:
-            response = await self._get(f"/triggers/{child_id}/parents",model=DTOS.TriggersTriggersDTO,headers=headers,is_list=True)
+            response = await self._get(f"/triggers/{child_id}/parents", model=DTOS.TriggersTriggersDTO, operation="LIST_TRIGGER_PARENTS", headers=headers,is_list=True)
             return response
         except Exception as e:
             return Err(e)
@@ -924,13 +925,13 @@ class ShieldXClient:
             Result with `True` if the unlink succeeded.
         """
         try:
-            await self._delete(f"/triggers/{parent_id}/children/{child_id}", headers)
+            await self._delete(f"/triggers/{parent_id}/children/{child_id}", operation="UNLINK_TRIGGER_CHILD", headers=headers)
             return Ok(True)
         except Exception as e:
             return Err(e)
 
 
-    async def _post(self, path: str, payload: Dict[str, Any],model:Type[R], headers: Dict[str, str] = {})->Result[R, Exception]:
+    async def _post(self, path: str, payload: Dict[str, Any],model:Type[R], operation: str, headers: Dict[str, str] = {})->Result[R, Exception]:
         """POST helper that validates the JSON response with a Pydantic model.
 
         Args:
@@ -953,7 +954,8 @@ class ShieldXClient:
                 response = await client.post(url, json=payload)
 
             
-            L.info({"event": "CLIENT.POST.RESPONSE", 
+            
+            L.info({"event": f"CLIENT.{operation}.RESPONSE", 
                     "path": path, 
                     "status": response.status_code, 
                     "time": T.time() - t1
@@ -966,7 +968,7 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-    async def _get(self, path: str,model:Type[R], headers: Dict[str, str] = {},is_list:bool =False)->Result[R| List[R], Exception]:
+    async def _get(self, path: str,model:Type[R], operation: str, headers: Dict[str, str] = {},is_list:bool =False)->Result[R| List[R], Exception]:
         """GET helper that validates the JSON response with a Pydantic model.
 
         Args:
@@ -987,7 +989,7 @@ class ShieldXClient:
                 response = await client.get(url)
 
             
-            L.info({"event": "CLIENT.GET.RESPONSE", 
+            L.info({"event": f"CLIENT.{operation}.RESPONSE", 
                     "path": path, 
                     "status": response.status_code, 
                     "time": T.time() - t1
@@ -1002,7 +1004,7 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-    async def _put(self, path: str, payload: Any, model: Type[R], headers: Dict[str, str] = {}) -> Result[R , Exception]:
+    async def _put(self, path: str, payload: Any, model: Type[R], operation: str, headers: Dict[str, str] = {}) -> Result[R , Exception]:
         """PUT helper with Pydantic validation.
 
         Args:
@@ -1023,7 +1025,7 @@ class ShieldXClient:
                 response = await client.put(url, json=payload)
 
             L.info({
-                "event": "CLIENT.PUT.RESPONSE",
+                "event": f"CLIENT.{operation}.RESPONSE",
                 "path": path,
                 "status": response.status_code,
                 "time": T.time() - t1
@@ -1040,7 +1042,7 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-    async def _delete(self, path: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
+    async def _delete(self, path: str, operation: str, headers: Dict[str, str] = {}) -> Result[bool, Exception]:
         """DELETE helper with basic logging.
 
         Args:
@@ -1059,7 +1061,7 @@ class ShieldXClient:
                 response = await client.delete(url)
 
             L.info({
-                "event": "CLIENT.DELETE.RESPONSE",
+                "event": f"CLIENT.{operation}.RESPONSE",
                 "path": path,
                 "status": response.status_code,
                 "time": T.time() - t1
