@@ -2,7 +2,7 @@ from uuid import uuid4
 import pytest
 from shieldx_client.client import ShieldXClient
 from shieldx_core.dtos import (TriggerCreateDTO, MessageWithIDDTO, EventTypeCreateDTO, EventCreateDTO, 
-                                RuleCreateDTO, RuleUpdateDTO, TriggerUpdateDTO)
+                                RuleCreateDTO, RuleUpdateDTO, TriggerUpdateDTO, EventUpdateDTO)
 
 
 
@@ -159,7 +159,7 @@ async def test_update_event():
     event_id = created.id  # <- Aquí NO necesitas uuid4()
 
     # Paso 3: Actualizar el evento
-    update_data = {"payload": {"new_key": "new_value"}}
+    update_data = EventUpdateDTO(payload={"new_key": "new_value"})
     update_result = await client.update_event(event_id, update_data)
     assert update_result.is_ok
     updated = update_result.unwrap()
