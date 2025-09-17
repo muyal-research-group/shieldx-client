@@ -13,9 +13,10 @@ dependencies = [
     "pydantic (>=2.11.4,<3.0.0)",
     "option (>=2.1.0,<3.0.0)",
     "bson (>=0.5.10,<0.6.0)",
-    "shieldx-core (==0.0.1a6)",
+    "shieldx-core (==0.0.1a9)",
     "PyYAML (>=6.0.2,<7.0.0)",
 ]
+
 [[tool.poetry.source]]
 name = "test"
 url = "https://test.pypi.org/simple/"
