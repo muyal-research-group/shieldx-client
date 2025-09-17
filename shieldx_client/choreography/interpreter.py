@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import yaml
 from pydantic import ValidationError
 from option import Result, Ok, Err
-from shieldx_client.choreography.schema import ChoreographySpec, TriggerSpec
+from shieldx_client.choreography.schema import ChoreographySpec, TriggerSpec, TargetSpec, ParametersSpec, RefSpec
+
 
 """YAML choreography interpreter for ShieldX.
 
@@ -87,25 +88,28 @@ class ChoreographyInterpreter:
             trigger_ids: Dict[str, str] = {}
             rule_ids: Dict[str, str] = {}
 
+            # 1–5: por cada trigger
             for trig in spec.triggers:
                 # 1) EventTypes
                 et_names = trig.event_types or [trig.name]
-                et_ids: List[str] = []
-
+                et_ids_for_this_trigger: List[str] = []
                 for et_name in et_names:
                     et_res = await self._get_or_create_event_type(et_name)
                     if et_res.is_err:
                         return Err(et_res.unwrap_err())
                     et_id = et_res.unwrap()
                     event_type_ids[et_name] = et_id
-                    et_ids.append(et_id)
+                    et_ids_for_this_trigger.append(et_id)
 
-                # 2) Rule
-                rule_res = await self._get_or_create_rule(trig)
+                # 2) Rule (firma derivada del target + method)
+                signature_dict, signature_str = self._signature_from_target(trig.rule.target)
+                params_schema = self._encode_parameters(trig.rule.parameters)
+
+                rule_res = await self._get_or_create_rule(signature_dict, params_schema)
                 if rule_res.is_err:
                     return Err(rule_res.unwrap_err())
                 rule_id = rule_res.unwrap()
-                rule_ids[trig.rule.target] = rule_id
+                rule_ids[signature_str] = rule_id
 
                 # 3) Trigger
                 trig_res = await self._get_or_create_trigger(trig)
@@ -120,29 +124,50 @@ class ChoreographyInterpreter:
                     return Err(bind_rt.unwrap_err())
 
                 # 5) Vincular EventType ⇄ Trigger
-                for et_id in et_ids:
+                for et_id in et_ids_for_this_trigger:
                     bind_et = await self._bind_event_trigger(event_type_id=et_id, trigger_id=trig_id)
                     if bind_et.is_err:
                         return Err(bind_et.unwrap_err())
 
-            # 6) Links opcionales (Triggers ⇄ Triggers)
+            # 6a) Encadenamiento por depends_on (preferido)
+            for trig in spec.triggers:
+                if trig.depends_on:
+                    parent = trigger_ids.get(trig.depends_on)
+                    child = trigger_ids.get(trig.name)
+                    if parent and child:
+                        link_res = await self._bind_triggers_triggers(
+                            src_trigger_id=parent,
+                            dst_trigger_id=child,
+                            order=None,
+                            condition=None,
+                        )
+                        if link_res.is_err:
+                            return Err(link_res.unwrap_err())
+
+            # 6b) Links opcionales (legado)
             for link in (spec.links or []):
                 src = trigger_ids.get(link.from_trigger)
                 dst = trigger_ids.get(link.to_trigger)
                 if src and dst:
                     bind_tt = await self._bind_triggers_triggers(
-                        src_trigger_id=src, dst_trigger_id=dst,
-                        order=link.order, condition=link.condition
+                        src_trigger_id=src,
+                        dst_trigger_id=dst,
+                        order=link.order,
+                        condition=link.condition,
                     )
                     if bind_tt.is_err:
                         return Err(bind_tt.unwrap_err())
 
-            return Ok({
-                "event_types": event_type_ids,
-                "triggers": trigger_ids,
-                "rules": rule_ids,
-                "links_count": len(spec.links or []),
-            })
+            # Summary
+            total_links = len([t for t in spec.triggers if t.depends_on]) + len(spec.links or [])
+            return Ok(
+                {
+                    "event_types": event_type_ids,
+                    "triggers": trigger_ids,
+                    "rules": rule_ids,
+                    "links_count": total_links,
+                }
+            )
         except Exception as e:
             return Err(e)
 
@@ -188,8 +213,13 @@ class ChoreographyInterpreter:
             found = found_res.unwrap()
             if found:
                 return Ok(found["id"])
+            
+            payload = {
+            "name": trig.name,
+            "depends_on": trig.depends_on,
+            }
 
-            created_res = await self.client.create_trigger_dict(trig.name)
+            created_res = await self.client.create_trigger_dict(payload)
             if created_res.is_err:
                 return Err(created_res.unwrap_err())
             created = created_res.unwrap()
@@ -197,7 +227,7 @@ class ChoreographyInterpreter:
         except Exception as e:
             return Err(e)
             
-    async def _get_or_create_rule(self, trig: TriggerSpec) -> Result[str, Exception]:
+    async def _get_or_create_rule(self, signature_dict: Dict[str, Any], params_schema: Dict[str, Dict[str, Any]]) -> Result[str, Exception]:
         """Get or create a Rule and return its ID.
 
         Validates that parameter types are allowed.
@@ -212,23 +242,16 @@ class ChoreographyInterpreter:
             ValueError: If any parameter has a disallowed `type`.
         """
         try:
-            target = trig.rule.target
-
-            found_res = await self.client.find_rule_by_target_dict(target)
+            # Buscar por firma (alias o bucket/key/method). Reutilizamos el método existente.
+            found_res = await self.client.find_rule_by_target_dict(signature_dict)
             if found_res.is_err:
                 return Err(found_res.unwrap_err())
             found = found_res.unwrap()
             if found:
                 return Ok(found["id"])
 
-            allowed_types = {"string", "int", "float", "bool"}
-            params: Dict[str, Dict[str, Any]] = {}
-            for pname, pspec in (trig.rule.parameters or {}).items():
-                if pspec.type not in allowed_types:
-                    return Err(ValueError(f"Tipo no válido para parámetro '{pname}': '{pspec.type}'"))
-                params[pname] = {"type": pspec.type, "description": pspec.description or ""}
-
-            created_res = await self.client.create_rule_dict(target, params)
+            # Crear con firma + parámetros (el servidor puede ignorar/aceptar este esquema según su modelo).
+            created_res = await self.client.create_rule_dict(signature_dict, params_schema)
             if created_res.is_err:
                 return Err(created_res.unwrap_err())
             created = created_res.unwrap()
@@ -236,8 +259,15 @@ class ChoreographyInterpreter:
         except Exception as e:
             return Err(e)
 
-    async def _bind_rules_trigger(self, *, trigger_id: str, rule_id: str,
-                                    priority: int = 0, condition: Optional[str] = None) -> Result[bool, Exception]:
+
+    async def _bind_rules_trigger(
+        self,
+        *,
+        trigger_id: str,
+        rule_id: str,
+        priority: int = 0,
+        condition: Optional[str] = None,
+    ) -> Result[bool, Exception]:
         """Ensure the Trigger⇄Rule relation (idempotent).
 
         Args:
@@ -260,8 +290,14 @@ class ChoreographyInterpreter:
         except Exception as e:
             return Err(e)
 
-    async def _bind_event_trigger(self, *, event_type_id: str, trigger_id: str,
-                                    priority: int = 0, condition: Optional[str] = None) -> Result[bool, Exception]:
+    async def _bind_event_trigger(
+        self,
+        *,
+        event_type_id: str,
+        trigger_id: str,
+        priority: int = 0,
+        condition: Optional[str] = None,
+    ) -> Result[bool, Exception]:
         """Ensure the EventType⇄Trigger relation (idempotent).
 
         Args:
@@ -284,8 +320,10 @@ class ChoreographyInterpreter:
         except Exception as e:
             return Err(e)
         
-    async def _bind_triggers_triggers(self, *, src_trigger_id: str, dst_trigger_id: str,
-                                        order: Optional[int], condition: Optional[str]) -> Result[bool, Exception]:
+
+    async def _bind_triggers_triggers(
+        self, *, src_trigger_id: str, dst_trigger_id: str, order: Optional[int], condition: Optional[str]
+    ) -> Result[bool, Exception]:
         """Ensure the Parent⇄Child Trigger relation (idempotent).
 
         Args:
@@ -307,3 +345,66 @@ class ChoreographyInterpreter:
             return Ok(True)
         except Exception as e:
             return Err(e)
+
+    def _signature_from_target(self, tgt: TargetSpec) -> Tuple[Dict[str, Any], str]:
+        
+        if tgt.alias:
+            # Si el alias ya incluye un punto, extraemos el método de ahí
+            if "." in tgt.alias:
+                alias, method = tgt.alias.rsplit(".", 1)
+                sig = {"kind": "alias", "alias": f"{alias}.{method}", "method": method}
+                s = f"alias:{alias}.{method}#{method}"
+            else:
+                # Si NO hay método explícito, no lo agregamos
+                sig = {"kind": "alias", "alias": tgt.alias}
+                s = f"alias:{tgt.alias}"
+            return sig, s
+
+        if tgt.bucket_id and tgt.key:
+            sig = {"kind": "persisted", "bucket_id": tgt.bucket_id, "key": tgt.key}
+            if tgt.method:
+                sig["method"] = tgt.method
+            s = f"persisted:{tgt.bucket_id}:{tgt.key}" + (f"#{tgt.method}" if tgt.method else "")
+            return sig, s
+        
+        raise ValueError("Target inválido: falta alias o bucket/key")
+    
+    
+    def _encode_parameters(self, params: ParametersSpec) -> Dict[str, Dict[str, Any]]:
+        """Serializa ParametersSpec a un dict puro, ignorando bloques vacíos."""
+        out: Dict[str, Dict[str, Any]] = {}
+
+        if params.init:
+            init_block = self._encode_param_block(params.init)
+            if init_block:  # solo agregar si no está vacío
+                out["init"] = init_block
+
+        if params.call:
+            call_block = self._encode_param_block(params.call)
+            if call_block:  # solo agregar si no está vacío
+                out["call"] = call_block
+
+        return out
+
+    def _encode_param_block(self, block: Dict[str, Any]) -> Dict[str, Any]:
+        """Serializa cada valor del bloque (literal o RefSpec) a dicts JSON-friendly."""
+        encoded: Dict[str, Any] = {}
+        for name, value in block.items():
+            encoded[name] = self._encode_param_value(value)
+        return encoded
+
+    def _encode_param_value(self, value: Any) -> Any:
+        """Convierte RefSpec → dict {'ref'/'$ref'...'value'...}, y deja literales tal cual.
+
+        Nota: la issue solo exige validar que ref/$ref sean strings; no se resuelve existencia.
+        """
+        # Caso 1: RefSpec → serializar a dict limpio
+        if isinstance(value, RefSpec):
+            return value.model_dump(exclude_none=True, by_alias=True)
+
+        # Caso 2: dict → limpiar None y devolver tal cual
+        if isinstance(value, dict):
+            return {k: v for k, v in value.items() if v is not None}
+
+        # Caso 3: literal → envolver en {"value": ...}
+        return {"value": value}
