@@ -13,9 +13,10 @@ dependencies = [
     "pydantic (>=2.11.4,<3.0.0)",
     "option (>=2.1.0,<3.0.0)",
     "bson (>=0.5.10,<0.6.0)",
-    "shieldx-core (==0.0.1a6)",
+    "shieldx-core (==0.0.1a9)",
     "PyYAML (>=6.0.2,<7.0.0)",
 ]
+
 [[tool.poetry.source]]
 name = "test"
 url = "https://test.pypi.org/simple/"
@@ -33,4 +34,9 @@ build-backend = "poetry.core.masonry.api"
 pytest-asyncio = "^0.26.0"
 pytest = "^8.3.5"
 coverage = "^7.10.2"
+pandas = "1.5.3"
+jupyter = "^1.1.1"
+matplotlib = "^3.10.5"
+seaborn = "^0.13.2"
+ipykernel = "^6.30.1"
 
