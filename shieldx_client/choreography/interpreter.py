@@ -62,7 +62,7 @@ class ChoreographyInterpreter:
             spec =  ChoreographySpec.model_validate(raw)
             return Ok(spec)
         except ValidationError as ve:
-            return Err(ValueError(f"Coreografía inválida: {ve}"))
+            return Err(ValueError(f"Invalid choreography: {ve}"))
         except Exception as e:
             return Err(e)
 
@@ -249,8 +249,7 @@ class ChoreographyInterpreter:
             found = found_res.unwrap()
             if found:
                 return Ok(found["id"])
-
-            # Crear con firma + parámetros (el servidor puede ignorar/aceptar este esquema según su modelo).
+                    # Crear con firma + parámetros (el servidor puede ignorar/aceptar este esquema según su modelo).
             created_res = await self.client.create_rule_dict(signature_dict, params_schema)
             if created_res.is_err:
                 return Err(created_res.unwrap_err())
@@ -258,6 +257,7 @@ class ChoreographyInterpreter:
             return Ok(created["id"])
         except Exception as e:
             return Err(e)
+
 
 
     async def _bind_rules_trigger(

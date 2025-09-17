@@ -5,4 +5,6 @@ dist/*
 **.(pn|jp)g
 **/plots/
 **/*.csv
+.coverage
+htmlcov/
 # **/*/publish.sh
