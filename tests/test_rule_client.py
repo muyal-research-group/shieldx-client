@@ -8,7 +8,7 @@ BASE_URL = "http://localhost:20000/api/v1"
 
 client = ShieldXClient(base_url=BASE_URL)
 
-@pytest.mark.skip("")
+#@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_create_rule():
     rule = RuleCreateDTO(
@@ -41,7 +41,7 @@ async def test_create_rule():
     print(result)
     assert result.is_ok
 
-@pytest.mark.skip("")
+#@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_get_rule_by_id():
     rule = RuleCreateDTO(
@@ -80,7 +80,7 @@ async def test_get_rule_by_id():
     assert fetched.rule_id == rule_id.id
     assert fetched.target.alias == "bellmanford_v1test1.run"
 
-@pytest.mark.skip("")
+#@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_list_rules():
     result = await client.list_rules()
@@ -88,7 +88,7 @@ async def test_list_rules():
     rules = result.unwrap()
     assert isinstance(rules, list)
     
-@pytest.mark.skip("")
+#@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_update_rule():
     rule = RuleCreateDTO(
@@ -153,7 +153,7 @@ async def test_update_rule():
     msg = update_result.unwrap()
     assert msg.message == "Rule updated"
     
-@pytest.mark.skip("")
+#@pytest.mark.skip("")
 @pytest.mark.asyncio
 async def test_delete_rule():
     rule = RuleCreateDTO(
