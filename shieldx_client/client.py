@@ -723,7 +723,7 @@ class ShieldXClient:
         except Exception as e:
             return Err(e)
 
-    async def create_trigger_dict(self, name: str) -> Result[dict, Exception]:
+    async def create_trigger_dict(self,payload: dict) -> Result[dict, Exception]:
         """Create a Trigger and return a small dict.
 
         Args:
@@ -733,11 +733,12 @@ class ShieldXClient:
             Dict `{"id": str, "name": str}`.
         """
         try:
-            res = await self.create_trigger(DTOS.TriggerCreateDTO(name=name))
+            dto = DTOS.TriggerCreateDTO(**payload)
+            res = await self.create_trigger(dto)
             if res.is_err:
                 return Err(res.unwrap_err())
             msg = res.unwrap()
-            return Ok({"id": msg.id, "name": name})
+            return Ok({"id": msg.id, "name": dto.name})
         except Exception as e:
             return Err(e)
 
