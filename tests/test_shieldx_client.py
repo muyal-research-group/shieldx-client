@@ -189,12 +189,31 @@ async def test_delete_event():
 @pytest.mark.asyncio
 async def test_create_rule():
     rule = RuleCreateDTO(
-        target="mictlanx.get",
-        parameters={
-            "bucket_id": {"type": "string", "description": "ID del bucket"},
-            "key": {"type": "string", "description": "Llave"},
-            "sink_path": {"type": "string", "description": "Ruta destino"}
-        }
+        target={
+                            "alias": "bellmanford_v1test1.run"
+                        },
+            parameters={
+                            "init":{  
+                                "graph":{
+                                        "type": "DiGraph",
+                                        "name": "graph",
+                                        "description": "Grafo dirigido almacenado en MictlanX",
+                                        "ref": "mictlanx://graphs_bucket@graph_k1/0/?content_type=application/octet-stream"
+                                },
+                                "other_init_param":  {"value": "A"},
+                            },
+                            "call":{  
+                                "source":  {"value": "A"},
+                                "target":{
+                                    "$ref": "mictlanx://params_bucket@target_label/0/?content_type=text/plain",
+                                    "type": "str",
+                                    "name": "target",
+                                    "description": "Nodo destino",
+                                    "value": "Z"
+                                },
+                            }
+                        }
+        
     )
     result = await client.create_rule(rule)
     print(result)
@@ -204,12 +223,31 @@ async def test_create_rule():
 @pytest.mark.asyncio
 async def test_get_rule_by_id():
     rule = RuleCreateDTO(
-        target="mictlanx.get",
-        parameters={
-            "bucket_id": {"type": "string", "description": "ID del bucket"},
-            "key": {"type": "string", "description": "Llave"},
-            "sink_path": {"type": "string", "description": "Ruta destino"}
-        }
+        target={
+                            "alias": "bellmanford_v1test2.run"
+                        },
+            parameters={
+                            "init":{  
+                                "graph":{
+                                        "type": "DiGraph",
+                                        "name": "graph",
+                                        "description": "Grafo dirigido almacenado en MictlanX",
+                                        "ref": "mictlanx://graphs_bucket@graph_k1/0/?content_type=application/octet-stream"
+                                },
+                                "other_init_param":  {"value": "A"},
+                            },
+                            "call":{  
+                                "source":  {"value": "A"},
+                                "target":{
+                                    "$ref": "mictlanx://params_bucket@target_label/0/?content_type=text/plain",
+                                    "type": "str",
+                                    "name": "target",
+                                    "description": "Nodo destino",
+                                    "value": "Z"
+                                },
+                            }
+                        }
+        
     )
     created = await client.create_rule(rule)
     assert created.is_ok
@@ -219,7 +257,7 @@ async def test_get_rule_by_id():
     assert result.is_ok
     fetched = result.unwrap()
     assert fetched.rule_id == rule_id.id
-    assert fetched.target == "mictlanx.get"
+    assert fetched.target.alias == "bellmanford_v1test2.run"
 
 #@pytest.mark.skip("")
 @pytest.mark.asyncio
@@ -233,24 +271,50 @@ async def test_list_rules():
 @pytest.mark.asyncio
 async def test_update_rule():
     rule = RuleCreateDTO(
-        target="original_function",
-        parameters={
-            "bucket_id": {"type": "string", "description": "ID del bucket"},
-            "key": {"type": "string", "description": "Llave"},
-            "sink_path": {"type": "string", "description": "Ruta destino"}
-        }
-    )
+        target={
+                            "alias": "bellmanford_v1test3.run"
+                        },
+            parameters={
+                            "init":{  
+                                "graph":{
+                                        "type": "DiGraph",
+                                        "name": "graph",
+                                        "description": "Grafo dirigido almacenado en MictlanX",
+                                        "ref": "mictlanx://graphs_bucket@graph_k1/0/?content_type=application/octet-stream"
+                                },
+                                "other_init_param":  {"value": "A"},
+                            },
+                            "call":{  
+                                "source":  {"value": "A"},
+                                "target":{
+                                    "$ref": "mictlanx://params_bucket@target_label/0/?content_type=text/plain",
+                                    "type": "str",
+                                    "name": "target",
+                                    "description": "Nodo destino",
+                                    "value": "Z"
+                                },
+                            }
+                        }
+        )
     created = await client.create_rule(rule)
     print(created)
     assert created.is_ok
     rule_id = created.unwrap()
     rule_id = rule_id.id
     updated_rule = RuleUpdateDTO(
-        target="updated_function",
+        target={
+                            "alias": "bellmanford_v1test3Update.run"
+                        },
         parameters={
-            "bucket_id": {"type": "string", "description": "ID del bucket"},
-            "key": {"type": "string", "description": "Llave"},
-            "sink_path": {"type": "string", "description": "Ruta destino"}
+            "init":{  
+                                "graph":{
+                                        "type": "DiGraphUpdate",
+                                        "name": "graphUpdate",
+                                        "description": "Grafo dirigido almacenado en MictlanX",
+                                        "ref": "mictlanx://graphs_bucket@graph_k1/0/?content_type=application/octet-stream"
+                                },
+                                "other_init_param":  {"value": "A"},
+                            },
         }
     )
     update_result = await client.update_rule(rule_id, updated_rule)
@@ -262,11 +326,31 @@ async def test_update_rule():
 @pytest.mark.asyncio
 async def test_delete_rule():
     rule = RuleCreateDTO(
-        target="to_be_deleted",
-        parameters={
-            "x": {"type": "bool", "description": "to be removed"}
-        }
-    )
+        target={
+                            "alias": "bellmanford_v1test4.run"
+                        },
+            parameters={
+                            "init":{  
+                                "graph":{
+                                        "type": "DiGraph",
+                                        "name": "graph",
+                                        "description": "Grafo dirigido almacenado en MictlanX",
+                                        "ref": "mictlanx://graphs_bucket@graph_k1/0/?content_type=application/octet-stream"
+                                },
+                                "other_init_param":  {"value": "A"},
+                            },
+                            "call":{  
+                                "source":  {"value": "A"},
+                                "target":{
+                                    "$ref": "mictlanx://params_bucket@target_label/0/?content_type=text/plain",
+                                    "type": "str",
+                                    "name": "target",
+                                    "description": "Nodo destino",
+                                    "value": "Z"
+                                },
+                            }
+                        }
+        )
     created = await client.create_rule(rule)
     assert created.is_ok
     rule_id = created.unwrap()
@@ -281,14 +365,7 @@ async def test_delete_rule():
 async def test_create_trigger():
     trigger = TriggerCreateDTO(
         name=f"test_trigger_create-{uuid4()}",
-        rule=RuleCreateDTO(
-            target="mictlanx.get",
-            parameters={
-                "bucket_id": {"type": "string", "description": "ID del bucket"},
-                "key": {"type": "string", "description": "Llave"},
-                "sink_path": {"type": "string", "description": "Ruta destino"}
-            }
-        )
+        depends_on="bellmanford_v1test4"
     )
     result = await client.create_trigger(trigger)
     print(result)
@@ -300,14 +377,7 @@ async def test_get_trigger_by_name():
     name = f"test_trigger_get-{uuid4()}"
     trigger = TriggerCreateDTO(
         name=name,
-        rule=RuleCreateDTO(
-            target="mictlanx.get",
-            parameters={
-                "bucket_id": {"type": "string", "description": "ID del bucket"},
-                "key": {"type": "string", "description": "Llave"},
-                "sink_path": {"type": "string", "description": "Ruta destino"}
-            }
-        )
+        depends_on="bellmanford_v1test4"
     )
     created = await client.create_trigger(trigger)
     assert created.is_ok
@@ -332,28 +402,14 @@ async def test_update_trigger():
     name = f"test_trigger_update-{uuid4()}"
     trigger = TriggerCreateDTO(
         name=name,
-        rule=RuleCreateDTO(
-            target="original_function",
-            parameters={
-                "bucket_id": {"type": "string", "description": "ID del bucket"},
-                "key": {"type": "string", "description": "Llave"},
-                "sink_path": {"type": "string", "description": "Ruta destino"}
-            }
-        )
+        depends_on="bellmanford_v1test4"
     )
     created = await client.create_trigger(trigger)
     assert created.is_ok
 
     updated_trigger = TriggerUpdateDTO(
         name=name,
-        rule=RuleUpdateDTO(
-            target="updated_function",
-            parameters={
-                "bucket_id": {"type": "string", "description": "ID del bucket"},
-                "key": {"type": "string", "description": "Llave"},
-                "sink_path": {"type": "string", "description": "Ruta destino"}
-            }
-        )
+        depends_on="bellmanford_v1test4Update"
     )
     update_result = await client.update_trigger(name, updated_trigger)
     assert update_result.is_ok
@@ -366,12 +422,7 @@ async def test_delete_trigger():
     name = "test_trigger_delete"
     trigger = TriggerCreateDTO(
         name=name,
-        rule=RuleCreateDTO(
-            target="to_be_deleted",
-            parameters={
-                "x": {"type": "bool", "description": "to be removed"}
-            }
-        )
+        depends_on="bellmanford_v1test4"
     )
     created = await client.create_trigger(trigger)
     assert created.is_ok
@@ -421,13 +472,31 @@ async def test_link_trigger_to_event_type():
 @pytest.mark.asyncio
 async def test_link_rule_to_trigger():
     rule = RuleCreateDTO(
-        target="mictlanx.get",
-        parameters={
-            "bucket_id": {"type": "string", "description": "ID del bucket"},
-            "key": {"type": "string", "description": "Llave"},
-            "sink_path": {"type": "string", "description": "Ruta destino"}
-        }
-    )
+        target={
+                            "alias": "bellmanford_v1test3.run"
+                        },
+            parameters={
+                            "init":{  
+                                "graph":{
+                                        "type": "DiGraph",
+                                        "name": "graph",
+                                        "description": "Grafo dirigido almacenado en MictlanX",
+                                        "ref": "mictlanx://graphs_bucket@graph_k1/0/?content_type=application/octet-stream"
+                                },
+                                "other_init_param":  {"value": "A"},
+                            },
+                            "call":{  
+                                "source":  {"value": "A"},
+                                "target":{
+                                    "$ref": "mictlanx://params_bucket@target_label/0/?content_type=text/plain",
+                                    "type": "str",
+                                    "name": "target",
+                                    "description": "Nodo destino",
+                                    "value": "Z"
+                                },
+                            }
+                        }
+        )
     trigger_id = f"trigger_id-{uuid4()}"
 
     rule_result = await client.create_rule(rule)

@@ -1,0 +1,38 @@
+triggers:
+  - name: "BellmanFordtest"
+    rule:
+      target:
+        alias: "bellmanford_v1.run"   # → Clase BellmanFordAlgorithm + método run
+        # method por defecto es "run", pero si el alias ya incluye ".run", está bien.
+      parameters:
+        init:                         # → kwargs para __init__(**init)
+          graph:                      # Parametro admitiendo RefSpec
+            type: "DiGraph"
+            name: "graph"
+            description: "Grafo dirigido almacenado en MictlanX"
+            ref: "mictlanx://graphs_bucket@graph_k1/0/?content_type=application/octet-stream"
+          other_init_param: "A"
+        call:                         # → kwargs para obj.run(**call)
+          source: "A"
+          target:
+            # Ejemplo usando $ref en lugar de ref (alias soportado por el modelo)
+            $ref: "mictlanx://params_bucket@target_label/0/?content_type=text/plain"
+            type: "str"
+            name: "target"
+            description: "Nodo destino"
+            value: "Z"
+
+  - name: "PlotGraph"
+    depends_on: "BellmanFordtest"
+    rule:
+      target:
+        alias: "bellmanford_v1.plot"
+        # method: "plot"  # No necesario si el alias ya lo especifica
+      parameters:
+        call:
+          algorithm_name: "BellmanFord"
+          save_plot: true
+          # Dónde guardar la imagen (literales):
+          sink_bucket_id: "plots_bucket"
+          sink_key: "bf_run_001.png"
+          # Metadatos arbitrarios (dict literal)
