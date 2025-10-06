@@ -48,6 +48,27 @@ class ShieldXClient:
         if token:
             self.headers["Authorization"] = f"Bearer {token}"
 
+    async def run_choreography(self,enriched_graph: DTOS.EnrichedGraphSpecDTO,headers: Dict[str, str] = {}) -> Result[dict, Exception]:
+        """
+        Envía un grafo enriquecido (con puertos y host de endpoints) a ShieldX para su ejecución.
+
+        Args:
+            enriched_graph: Objeto `EnrichedGraphSpecDTO` con los vértices y aristas
+                            del grafo enriquecido, incluyendo información de despliegue.
+            headers: Encabezados HTTP adicionales (opcional).
+
+        Returns:
+            Result[dict, Exception]: JSON de respuesta devuelto por ShieldX o un error.
+        """
+        try:
+            path = "/choreography/run"
+            payload = enriched_graph.model_dump(exclude_none=True)
+
+    
+            res = await self._post(path=path,payload=payload,model=None, operation="RUN_CHOREOGRAPHY",headers=headers)
+            return res
+        except Exception as e:
+            return Err(e)
 
     def interpret(self, choreography_path_or_text: str, *, as_text: bool = False) -> Result[Dict[str, Any], Exception]:
         """Interpret a choreography YAML and index entities (blocking).
